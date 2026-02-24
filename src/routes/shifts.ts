@@ -20,7 +20,7 @@ shifts.get('/', async (c) => {
     let query = `
       SELECT 
         s.id, s.user_id, s.calendar_id, s.shift_date,
-        s.start_time, s.end_time, s.note, s.status, s.created_at,
+        s.start_time, s.end_time, s.note, s.status, s.animal_type, s.created_at,
         u.name as user_name, u.email as user_email,
         cal.name as calendar_name, cal.color as calendar_color, cal.slug as calendar_slug
       FROM shifts s
@@ -70,11 +70,15 @@ shifts.get('/', async (c) => {
 shifts.post('/', async (c) => {
   try {
     const userId = c.get('userId');
-    const { calendar_id, shift_date, start_time, end_time, note } = await c.req.json();
+    const { calendar_id, shift_date, start_time, end_time, note, animal_type } = await c.req.json();
     
     if (!calendar_id || !shift_date) {
       return c.json({ error: 'カレンダーと日付は必須です' }, 400);
     }
+    
+    // 動物種別バリデーション
+    const validAnimalTypes = ['dog', 'cat', 'other'];
+    const animalTypeValue = animal_type && validAnimalTypes.includes(animal_type) ? animal_type : 'other';
     
     // 日付フォーマット確認
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -100,27 +104,28 @@ shifts.post('/', async (c) => {
       return c.json({ error: 'カレンダーが見つかりません' }, 404);
     }
     
-    // 重複チェック（同一ユーザー・同一日・同一カレンダー）
+    // 重複チェック（同一ユーザー・同一日・同一カレンダー・同一動物種別）
     const existing = await c.env.DB.prepare(
-      'SELECT id FROM shifts WHERE user_id = ? AND calendar_id = ? AND shift_date = ?'
-    ).bind(userId, calendar_id, shift_date).first();
+      'SELECT id FROM shifts WHERE user_id = ? AND calendar_id = ? AND shift_date = ? AND animal_type = ?'
+    ).bind(userId, calendar_id, shift_date, animalTypeValue).first();
     
     if (existing) {
-      return c.json({ error: 'この日付には既にシフトが登録されています。編集してください。' }, 409);
+      return c.json({ error: 'この日付・動物種別には既にシフトが登録されています。編集してください。' }, 409);
     }
     
     // シフト作成
     const result = await c.env.DB.prepare(`
-      INSERT INTO shifts (user_id, calendar_id, shift_date, start_time, end_time, note, status)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending')
-      RETURNING id, user_id, calendar_id, shift_date, start_time, end_time, note, status, created_at
+      INSERT INTO shifts (user_id, calendar_id, shift_date, start_time, end_time, note, status, animal_type)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+      RETURNING id, user_id, calendar_id, shift_date, start_time, end_time, note, status, animal_type, created_at
     `).bind(
       userId,
       calendar_id,
       shift_date,
       start_time || null,
       end_time || null,
-      note || null
+      note || null,
+      animalTypeValue
     ).first();
     
     return c.json({ message: 'シフトを登録しました', shift: result }, 201);
@@ -152,7 +157,11 @@ shifts.put('/:id', async (c) => {
       return c.json({ error: 'このシフトを編集する権限がありません' }, 403);
     }
     
-    const { start_time, end_time, note, status } = await c.req.json();
+    const { start_time, end_time, note, status, animal_type } = await c.req.json();
+    
+    // 動物種別バリデーション
+    const validAnimalTypes = ['dog', 'cat', 'other'];
+    const newAnimalType = animal_type && validAnimalTypes.includes(animal_type) ? animal_type : undefined;
     
     // 時間フォーマット確認
     const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -175,7 +184,7 @@ shifts.put('/:id', async (c) => {
     
     const result = await c.env.DB.prepare(`
       UPDATE shifts 
-      SET start_time = ?, end_time = ?, note = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+      SET start_time = ?, end_time = ?, note = ?, status = ?, animal_type = COALESCE(?, animal_type), updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
       RETURNING *
     `).bind(
@@ -183,6 +192,7 @@ shifts.put('/:id', async (c) => {
       end_time !== undefined ? end_time : null,
       note !== undefined ? note : null,
       newStatus,
+      newAnimalType || null,
       shiftId
     ).first();
     
