@@ -154,7 +154,92 @@ const htmlContent = `<!DOCTYPE html>
     .paw-icon { display:inline-block; animation:bounce 2s infinite; }
 
     /* 週表示セル */
-    .week-cell { min-height: 80px; border: 1px solid #e5e7eb; padding: 6px 5px; vertical-align: top; }
+    .week-cell { min-height: 80px; border: 1px solid #e5e7eb; padding: 6px 5px; vertical-align: top; cursor: pointer; transition: background 0.1s; }
+    .week-cell:hover { background: #f0f7ff; }
+
+    /* 日別一覧モーダル */
+    .day-view-modal { max-width: 520px !important; }
+    .day-shift-card {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      border-radius: 12px;
+      background: white;
+      border: 1.5px solid #e5e7eb;
+      cursor: pointer;
+      transition: box-shadow 0.15s, border-color 0.15s, transform 0.1s;
+      overflow: hidden;
+    }
+    .day-shift-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.12); border-color: #93c5fd; transform: translateY(-1px); }
+    .day-shift-card.is-mine { border-color: #93c5fd; background: #f0f7ff; }
+    .shift-time-col {
+      flex-shrink: 0;
+      width: 80px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 6px;
+      background: #f8fafc;
+      border-right: 1.5px solid #e5e7eb;
+      gap: 2px;
+    }
+    .shift-time-col .t-start { font-size: 16px; font-weight: 800; color: #1e40af; line-height: 1.1; }
+    .shift-time-col .t-arrow { font-size: 11px; color: #94a3b8; margin: 1px 0; }
+    .shift-time-col .t-end   { font-size: 13px; font-weight: 600; color: #475569; line-height: 1.1; }
+    .shift-time-col .t-none  { font-size: 10px; color: #94a3b8; }
+    .shift-info-col {
+      flex: 1;
+      min-width: 0;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+    }
+    .shift-cal-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .day-section-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 0 4px 0;
+      border-bottom: 1.5px solid currentColor;
+      margin-bottom: 6px;
+      opacity: 0.85;
+    }
+    .time-bar-wrap {
+      width: 100%;
+      height: 4px;
+      background: #e5e7eb;
+      border-radius: 2px;
+      margin-top: 2px;
+      overflow: hidden;
+    }
+    .time-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+    }
+    /* 旧スタイル互換 */
+    .day-shift-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 10px;
+      background: white; border: 1px solid #e5e7eb;
+      cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .day-shift-row:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-color: #93c5fd; }
+    .time-block {
+      flex-shrink: 0; text-align: center; min-width: 72px;
+      background: #f8fafc; border-radius: 8px; padding: 5px 6px;
+    }
+    .time-block .time-start { font-size: 15px; font-weight: 700; color: #1e40af; line-height: 1.2; }
+    .time-block .time-end   { font-size: 12px; color: #64748b; line-height: 1.2; }
+    .time-block .time-sep   { font-size: 10px; color: #94a3b8; }
+    .time-block .no-time    { font-size: 11px; color: #94a3b8; }
 
     /* ナビボタン */
     .nav-btn { background:white; border:1px solid #e5e7eb; border-radius:8px; padding:6px 12px; cursor:pointer; transition:all 0.15s; }
@@ -560,13 +645,16 @@ function shiftBadgesHtml(shifts, showAnimalGroups = true) {
 function singleBadgeHtml(s) {
   const color = s.calendar_color || '#4f8ef7';
   const at = ANIMAL_TYPES[s.animal_type || 'other'];
-  const time = s.start_time ? s.start_time.slice(0,5) : '';
-  const label = (time ? time + ' ' : '') + s.user_name;
+  const start = s.start_time ? s.start_time.slice(0,5) : '';
+  const end   = s.end_time   ? s.end_time.slice(0,5)   : '';
+  // 開始〜終了を「09:00-17:00」形式でバッジに表示
+  const timeLabel = start ? (end ? start + '-' + end : start) : '';
+  const label = (timeLabel ? timeLabel + ' ' : '') + s.user_name;
   const safeS = encodeURIComponent(JSON.stringify(s));
   return \`<span class="shift-badge"
     style="background:\${color}18;color:\${color};border:1px solid \${color}40"
     onclick="event.stopPropagation();showDetail(decodeURIComponent('\${safeS}'))"
-    title="\${s.user_name}\${time?' ('+time+(s.end_time?' ～ '+s.end_time.slice(0,5):'')+')':''} [\${at.label}]">
+    title="\${s.user_name}\${start?' ('+start+(end?' ～ '+end:'')+')':''} [\${at.label}]">
     <span style="font-size:9px">\${at.emoji}</span><span class="truncate">\${label}</span>
   </span>\`;
 }
@@ -602,7 +690,7 @@ function renderMonthView() {
       const ds = \`\${y}-\${String(m).padStart(2,'0')}-\${String(day).padStart(2,'0')}\`;
       const isToday = today.getFullYear()===y && today.getMonth()+1===m && today.getDate()===day;
       const shifts = map[ds] || [];
-      html += \`<td class="cal-cell \${isToday?'today':''}" onclick="openShiftForm('\${ds}')">
+      html += \`<td class="cal-cell \${isToday?'today':''}" onclick="openDayView('\${ds}')">
         <div class="cal-cell-inner">
           <div class="flex items-center justify-between mb-1">
             <span class="\${isToday?'bg-blue-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold':'text-sm font-bold '+((col===0)?'text-red-500':(col===6)?'text-blue-500':'text-gray-700')}">\${day}</span>
@@ -658,7 +746,7 @@ function renderWeekView() {
           if (cell.other) return '<td class="week-cell bg-gray-50"></td>';
           const ds = cell.date.toISOString().split('T')[0];
           const shifts = map[ds] || [];
-          return \`<td class="week-cell" onclick="openShiftForm('\${ds}')">\${shiftBadgesHtml(shifts, true)}</td>\`;
+          return \`<td class="week-cell" onclick="openDayView('\${ds}')">\${shiftBadgesHtml(shifts, true)}</td>\`;
         }).join('')}</tr></tbody>
       </table>
     </div>\`;
@@ -895,6 +983,139 @@ function openShiftForm(defaultDate = null) {
 function showSfError(msg) {
   const el = document.getElementById('sf-error');
   if (el) { el.textContent = msg; el.classList.remove('hidden'); }
+}
+
+// ============================================================
+// 日別一覧モーダル（日付タップ時）
+// ============================================================
+function openDayView(dateStr) {
+  // その日のシフトを取得・時刻順でソート
+  const dayShifts = State.shifts
+    .filter(s => s.shift_date === dateStr)
+    .sort((a, b) => {
+      const ta = a.start_time || '99:99';
+      const tb = b.start_time || '99:99';
+      return ta < tb ? -1 : ta > tb ? 1 : 0;
+    });
+
+  const d = new Date(dateStr + 'T12:00:00');
+  const dayNames = ['日','月','火','水','木','金','土'];
+  const dayName  = dayNames[d.getDay()];
+  const isToday  = dateStr === new Date().toISOString().split('T')[0];
+  const dispDate = dateStr.replace(/-/g, '/') + '（' + dayName + '）';
+
+  // 動物種別でグループ化（時刻ソート済みリストから）
+  const grp = { dog: [], cat: [], other: [] };
+  dayShifts.forEach(s => {
+    const k = s.animal_type || 'other';
+    (grp[k] || grp.other).push(s);
+  });
+
+  // 時間バー計算（06:00〜22:00 を100%とする）
+  function calcBarStyle(s, color) {
+    if (!s.start_time) return '';
+    const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
+    const BASE = 6*60, RANGE = 16*60;
+    const st = Math.max(toMin(s.start_time) - BASE, 0);
+    const en = s.end_time ? Math.min(toMin(s.end_time) - BASE, RANGE) : st + 60;
+    const left  = Math.round(st / RANGE * 100);
+    const width = Math.max(Math.round((en - st) / RANGE * 100), 3);
+    return \`<div class="time-bar-wrap"><div class="time-bar-fill" style="background:\${color};width:\${width}%;margin-left:\${left}%"></div></div>\`;
+  }
+
+  function shiftCardHtml(s) {
+    const color   = s.calendar_color || '#4f8ef7';
+    const at      = ANIMAL_TYPES[s.animal_type || 'other'];
+    const safeS   = encodeURIComponent(JSON.stringify(s));
+    const stMap   = { pending:'未確認', approved:'承認済', rejected:'却下' };
+    const stClass = { pending:'bg-yellow-100 text-yellow-700', approved:'bg-green-100 text-green-700', rejected:'bg-red-100 text-red-700' };
+    const isMine  = s.user_id === (State.user && State.user.id);
+    const start   = s.start_time ? s.start_time.slice(0,5) : null;
+    const end     = s.end_time   ? s.end_time.slice(0,5)   : null;
+
+    const timeColHtml = start
+      ? \`<div class="shift-time-col">
+          <div class="t-start">\${start}</div>
+          <div class="t-arrow">↓</div>
+          <div class="t-end">\${end || '--:--'}</div>
+        </div>\`
+      : \`<div class="shift-time-col"><div class="t-none">時刻未設定</div></div>\`;
+
+    return \`<div class="day-shift-card \${isMine ? 'is-mine' : ''}" onclick="showDetail(decodeURIComponent('\${safeS}'))">
+      \${timeColHtml}
+      <div class="shift-info-col">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="font-bold text-gray-800 text-sm">\${s.user_name}</span>
+          \${isMine ? '<span class="text-xs bg-blue-500 text-white px-1.5 py-0.5 rounded-full">自分</span>' : ''}
+          <span class="text-xs \${stClass[s.status] || 'bg-gray-100 text-gray-600'} px-1.5 py-0.5 rounded ml-auto">\${stMap[s.status] || s.status}</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="shift-cal-dot" style="background:\${color}"></span>
+          <span class="text-xs font-medium text-gray-600">\${s.calendar_name}</span>
+          <span class="text-sm ml-1">\${at.emoji}</span>
+        </div>
+        \${s.note ? \`<div class="text-xs text-gray-400 truncate">📝 \${s.note}</div>\` : ''}
+        \${calcBarStyle(s, color)}
+      </div>
+      <div class="flex-shrink-0 text-gray-300 px-3 self-center">
+        <i class="fas fa-chevron-right text-xs"></i>
+      </div>
+    </div>\`;
+  }
+
+  let bodyHtml = '';
+  if (dayShifts.length === 0) {
+    bodyHtml = \`<div class="text-center py-10">
+      <div class="text-5xl mb-3">📭</div>
+      <p class="text-gray-400 text-sm">この日のシフトはまだ登録されていません</p>
+    </div>\`;
+  } else {
+    // 時刻タイムライン（全シフト一覧・時刻順）
+    bodyHtml += \`<div class="mb-1">
+      <p class="text-xs text-gray-400 mb-3">🕐 時刻順</p>
+      <div class="space-y-2">\${dayShifts.map(shiftCardHtml).join('')}</div>
+    </div>\`;
+
+    // 動物種別まとめ（件数サマリー）
+    const summary = ['dog','cat','other']
+      .filter(t => grp[t] && grp[t].length > 0)
+      .map(t => {
+        const at = ANIMAL_TYPES[t];
+        const lbl = t === 'dog' ? '犬' : t === 'cat' ? '猫' : 'その他';
+        return \`<span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full" style="background:\${at.color}20;color:\${at.color}">\${at.emoji} \${lbl}: \${grp[t].length}名</span>\`;
+      }).join('');
+    if (summary) {
+      bodyHtml += \`<div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-gray-100">\${summary}</div>\`;
+    }
+  }
+
+  document.getElementById('modal-root').innerHTML = \`
+  <div class="modal-overlay" onclick="closeModalOuter(event)">
+    <div class="modal-content day-view-modal" onclick="event.stopPropagation()">
+      <!-- ヘッダー -->
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            \${isToday ? '<span class="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full">今日</span>' : ''}
+            <h3 class="text-xl font-bold text-gray-800">\${dispDate}</h3>
+          </div>
+          <p class="text-xs text-gray-400 mt-0.5">シフト登録数: <strong class="text-gray-700">\${dayShifts.length}件</strong></p>
+        </div>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100">
+          <i class="fas fa-times text-lg"></i>
+        </button>
+      </div>
+
+      <!-- シフト一覧 -->
+      <div class="mb-4">\${bodyHtml}</div>
+
+      <!-- 登録ボタン -->
+      <button onclick="closeModal(); openShiftForm('\${dateStr}')"
+        class="w-full bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm">
+        <i class="fas fa-plus"></i>この日にシフトを登録する
+      </button>
+    </div>
+  </div>\`;
 }
 
 // ============================================================
