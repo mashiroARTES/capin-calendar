@@ -42,17 +42,36 @@ const htmlContent = `<!DOCTYPE html>
 
     /* カレンダーセル */
     .cal-cell {
-      min-height: 100px;
+      height: 1px; /* tbody tr に height:auto 継承させるためのトリック */
       vertical-align: top;
       border: 1px solid #e5e7eb;
-      padding: 4px 3px;
+      padding: 6px 5px;
       cursor: pointer;
       transition: background 0.1s;
     }
+    /* セル内コンテナを高さいっぱいに伸ばす */
+    .cal-cell-inner {
+      height: 100%;
+      min-height: 80px;
+    }
     .cal-cell:hover { background: #f0f7ff; }
     .cal-cell.today { background: #fffbeb; }
-    .cal-cell.other-month { background: #f9fafb; opacity: 0.6; }
+    .cal-cell.other-month { background: #f9fafb; opacity: 0.55; }
     .cal-cell.today:hover { background: #fef3c7; }
+
+    /* カレンダーテーブルを縦いっぱいに広げる */
+    #month-table {
+      width: 100%;
+      height: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    #month-table tbody {
+      height: 100%;
+    }
+    #month-table tbody tr {
+      height: calc((100% - 32px) / var(--cal-rows, 6));
+    }
 
     /* シフトバッジ */
     .shift-badge {
@@ -135,7 +154,7 @@ const htmlContent = `<!DOCTYPE html>
     .paw-icon { display:inline-block; animation:bounce 2s infinite; }
 
     /* 週表示セル */
-    .week-cell { min-height: 64px; border: 1px solid #e5e7eb; padding: 4px 3px; vertical-align: top; }
+    .week-cell { min-height: 80px; border: 1px solid #e5e7eb; padding: 6px 5px; vertical-align: top; }
 
     /* ナビボタン */
     .nav-btn { background:white; border:1px solid #e5e7eb; border-radius:8px; padding:6px 12px; cursor:pointer; transition:all 0.15s; }
@@ -150,7 +169,8 @@ const htmlContent = `<!DOCTYPE html>
     ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
 
     @media (max-width: 640px) {
-      .cal-cell { min-height: 64px; padding: 2px; }
+      .cal-cell { padding: 2px; }
+      .cal-cell-inner { min-height: 52px; }
       .shift-badge { font-size: 9px; padding: 1px 3px; }
     }
   </style>
@@ -453,7 +473,7 @@ function renderShell() {
     </div>
 
     <!-- コンテンツ -->
-    <div id="cal-content" class="flex-1 overflow-auto min-h-0"></div>
+    <div id="cal-content" class="flex-1 overflow-hidden min-h-0"></div>
   </div>
 
   <div id="modal-root"></div>\`;
@@ -499,8 +519,10 @@ function updateViewBtns() {
 function renderContent() {
   const el = document.getElementById('cal-content');
   if (!el) return;
+  // 月表示: テーブルを縦いっぱいに広げるため overflow-hidden、週・一覧はスクロール
+  el.style.overflow = State.viewMode === 'month' ? 'hidden' : 'auto';
   if (State.loading) {
-    el.innerHTML = \`<div class="flex items-center justify-center h-40"><div class="spinner"></div></div>\`;
+    el.innerHTML = \`<div class="flex items-center justify-center h-full"><div class="spinner"></div></div>\`;
     return;
   }
   if (State.viewMode === 'month') el.innerHTML = renderMonthView();
@@ -559,30 +581,35 @@ function renderMonthView() {
   const today = new Date();
   const days = ['日','月','火','水','木','金','土'];
 
-  // 日別シフトマップ
   const map = {};
   State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date] || []).push(s); });
 
   const rows = Math.ceil((firstDay + lastDate) / 7);
-  let html = \`<div class="p-2 max-w-screen-xl mx-auto">
-  <table class="w-full border-collapse table-fixed">
-    <thead><tr>\${days.map((d,i)=>\`<th class="py-1.5 text-xs font-semibold \${i===0?'text-red-500':i===6?'text-blue-500':'text-gray-500'} text-center">\${d}</th>\`).join('')}</tr></thead>
+
+  // テーブルをコンテナ高さいっぱいに伸ばす
+  let html = \`<div class="h-full flex flex-col" style="--cal-rows:\${rows}">
+  <table id="month-table">
+    <thead>
+      <tr style="height:32px">\${days.map((d,i)=>\`<th class="text-xs font-semibold pb-1 \${i===0?'text-red-500':i===6?'text-blue-500':'text-gray-500'} text-center border-b border-gray-200">\${d}</th>\`).join('')}</tr>
+    </thead>
     <tbody>\`;
 
   for (let row = 0; row < rows; row++) {
     html += '<tr>';
     for (let col = 0; col < 7; col++) {
       const day = row*7 + col - firstDay + 1;
-      if (day < 1 || day > lastDate) { html += '<td class="cal-cell other-month"></td>'; continue; }
+      if (day < 1 || day > lastDate) { html += '<td class="cal-cell other-month"><div class="cal-cell-inner"></div></td>'; continue; }
       const ds = \`\${y}-\${String(m).padStart(2,'0')}-\${String(day).padStart(2,'0')}\`;
       const isToday = today.getFullYear()===y && today.getMonth()+1===m && today.getDate()===day;
       const shifts = map[ds] || [];
       html += \`<td class="cal-cell \${isToday?'today':''}" onclick="openShiftForm('\${ds}')">
-        <div class="flex items-center justify-between mb-0.5">
-          <span class="\${isToday?'bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold':'text-xs font-semibold '+((col===0)?'text-red-500':(col===6)?'text-blue-500':'text-gray-700')}">\${day}</span>
-          \${shifts.length > 0 ? \`<span class="text-xs text-gray-300">\${shifts.length}</span>\` : ''}
+        <div class="cal-cell-inner">
+          <div class="flex items-center justify-between mb-1">
+            <span class="\${isToday?'bg-blue-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold':'text-sm font-bold '+((col===0)?'text-red-500':(col===6)?'text-blue-500':'text-gray-700')}">\${day}</span>
+            \${shifts.length > 0 ? \`<span class="text-xs text-gray-300 pr-0.5">\${shifts.length}</span>\` : ''}
+          </div>
+          \${shiftBadgesHtml(shifts, true)}
         </div>
-        \${shiftBadgesHtml(shifts, true)}
       </td>\`;
     }
     html += '</tr>';
@@ -615,7 +642,7 @@ function renderWeekView() {
   const map = {};
   State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date] || []).push(s); });
 
-  let html = '<div class="p-3 max-w-screen-xl mx-auto space-y-3">';
+  let html = '<div class="p-3 max-w-screen-xl mx-auto pb-6 space-y-3">';
   weeks.forEach((wk, wi) => {
     html += \`<div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
       <div class="bg-gray-50 px-3 py-1 border-b border-gray-100 text-xs font-semibold text-gray-500">第\${wi+1}週</div>
