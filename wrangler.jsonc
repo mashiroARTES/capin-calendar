@@ -10,7 +10,7 @@
     {
       "binding": "DB",
       "database_name": "capin-calendar-production",
-      "database_id": "local-dev-placeholder"
+      "database_id": "70b24fb6-4ca1-4fb3-ae7c-7fbbe78d9b5a"
     }
   ]
 }
