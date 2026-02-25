@@ -847,129 +847,156 @@ function getLocationLabel(s) {
 }
 
 // ============================================================
-// 月表示（コンパクト行形式 - デフォルト）
+// 月表示（Flexbox方式 - 列幅・行高さをJS完全制御）
 // ============================================================
 function renderMonthView() {
   const {currentYear:y, currentMonth:m} = State;
   const firstDay = new Date(y, m-1, 1).getDay();
   const lastDate = new Date(y, m, 0).getDate();
   const today = new Date();
-  const days = ['日','月','火','水','木','金','土'];
+  const DAYS = ['日','月','火','水','木','金','土'];
+  const DAY_COLORS = ['#ef4444','#374151','#374151','#374151','#374151','#374151','#3b82f6'];
 
   const map = {};
   State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date] || []).push(s); });
 
   const rows = Math.ceil((firstDay + lastDate) / 7);
 
-  // 当日・翌日の日付文字列
-  const todayStr = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
-  const tomorrowDate = new Date(today); tomorrowDate.setDate(today.getDate() + 1);
-  const tomorrowStr  = tomorrowDate.getFullYear()+'-'+String(tomorrowDate.getMonth()+1).padStart(2,'0')+'-'+String(tomorrowDate.getDate()).padStart(2,'0');
+  // 当日・翌日
+  const todayStr    = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  const tomorrowD   = new Date(today); tomorrowD.setDate(today.getDate()+1);
+  const tomorrowStr = tomorrowD.getFullYear()+'-'+String(tomorrowD.getMonth()+1).padStart(2,'0')+'-'+String(tomorrowD.getDate()).padStart(2,'0');
 
-  // 各行のサイズクラスを決定（当日/翌日を含む行 → sz-lg、隣接行 → sz-md、それ以外 → sz-sm）
-  const rowSzClass = Array.from({length: rows}, (_, row) => {
-    for (let col = 0; col < 7; col++) {
-      const day = row*7 + col - firstDay + 1;
-      if (day < 1 || day > lastDate) continue;
-      const ds = y+'-'+String(m).padStart(2,'0')+'-'+String(day).padStart(2,'0');
-      if (ds === todayStr || ds === tomorrowStr) return 'sz-lg';
-    }
-    return 'sz-sm';
+  // 月内の全日付をフラットに作成（7列×rows行）
+  const cells = [];
+  for (let i = 0; i < rows * 7; i++) {
+    const day = i - firstDay + 1;
+    if (day < 1 || day > lastDate) { cells.push(null); continue; }
+    const ds = y+'-'+String(m).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+    cells.push({ day, ds, isToday: ds===todayStr, isTomorrow: ds===tomorrowStr });
+  }
+
+  // 各行の高さ（当日/翌日含む行=240px、隣接行=100px、他=50px）
+  const rowHeights = Array.from({length: rows}, (_, r) => {
+    const hasKey = cells.slice(r*7, r*7+7).some(c => c && (c.isToday || c.isTomorrow));
+    return hasKey ? 240 : 50;
   });
-  // 当日/翌日行に隣接する行を sz-md に昇格
+  // 隣接行を100pxに昇格
   for (let r = 0; r < rows; r++) {
-    if (rowSzClass[r] === 'sz-lg') {
-      if (r > 0        && rowSzClass[r-1] === 'sz-sm') rowSzClass[r-1] = 'sz-md';
-      if (r < rows - 1 && rowSzClass[r+1] === 'sz-sm') rowSzClass[r+1] = 'sz-md';
+    if (rowHeights[r] === 240) {
+      if (r > 0       && rowHeights[r-1] === 50) rowHeights[r-1] = 100;
+      if (r < rows-1  && rowHeights[r+1] === 50) rowHeights[r+1] = 100;
     }
   }
 
-  // 行ごとの重み（lg=3, md=2, sm=1）を px 高さに変換
-  // 利用可能高さが不明なためスマホ考慮の絶対px値を使用
-  const ROW_H = { 'sz-lg': 130, 'sz-md': 90, 'sz-sm': 52 };
+  // 各列の幅（当日/翌日の列=30%、同じ行の他列=（70%÷6）、他行は均等14.28%）
+  // 当日・翌日がある列インデックスを特定
+  const keyColSet = new Set();
+  cells.forEach((c, i) => { if (c && (c.isToday || c.isTomorrow)) keyColSet.add(i % 7); });
 
-  let html = \`<div style="--cal-rows:\${rows}">
-  <table id="month-table">
-    <thead>
-      <tr style="height:26px">\${days.map((d,i)=>\`<th class="text-xs font-semibold pb-1 \${i===0?'text-red-500':i===6?'text-blue-500':'text-gray-500'} text-center border-b border-gray-200">\${d}</th>\`).join('')}</tr>
-    </thead>
-    <tbody>\`;
+  let colWidths;
+  if (keyColSet.size > 0) {
+    // キー列が占める幅の合計 = キー列数 × 30%
+    const keyCount = keyColSet.size;
+    const keyW = 30;
+    const otherW = (100 - keyCount * keyW) / (7 - keyCount);
+    colWidths = Array.from({length:7}, (_, ci) => keyColSet.has(ci) ? keyW : otherW);
+  } else {
+    colWidths = Array(7).fill(100/7);
+  }
 
-  for (let row = 0; row < rows; row++) {
-    const rowH = ROW_H[rowSzClass[row]];
-    html += \`<tr style="height:\${rowH}px">\`;
-    for (let col = 0; col < 7; col++) {
-      const day = row*7 + col - firstDay + 1;
-      if (day < 1 || day > lastDate) {
-        html += \`<td class="cal-cell other-month"><div class="cal-cell-inner" style="height:\${rowH}px"></div></td>\`;
+  // 時間帯判定
+  const getSlot = t => {
+    if (!t) return 'night';
+    const h = parseInt(t.slice(0,2),10);
+    if (h>=3 && h<12) return 'morning';
+    if (h>=12 && h<17) return 'afternoon';
+    return 'night';
+  };
+  const SLOTS = [
+    {key:'morning',  mark:'🌅', hc:'#d97706'},
+    {key:'afternoon',mark:'☀️', hc:'#059669'},
+    {key:'night',    mark:'🌙', hc:'#4f46e5'},
+  ];
+
+  // ヘッダー行
+  const headerHtml = DAYS.map((d, ci) =>
+    \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;text-align:center;font-size:11px;font-weight:600;color:\${DAY_COLORS[ci]};padding:3px 0;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;box-sizing:border-box">\${d}</div>\`
+  ).join('');
+
+  // データ行
+  let bodyHtml = '';
+  for (let r = 0; r < rows; r++) {
+    const rowH = rowHeights[r];
+    let rowHtml = '';
+    for (let c = 0; c < 7; c++) {
+      const cell = cells[r*7+c];
+      const w = colWidths[c].toFixed(2);
+      const borderR = '1px solid #e5e7eb';
+      const borderB = '1px solid #e5e7eb';
+
+      if (!cell) {
+        rowHtml += \`<div style="width:\${w}%;flex-shrink:0;height:\${rowH}px;background:#f9fafb;border-right:\${borderR};border-bottom:\${borderB};box-sizing:border-box;opacity:0.5"></div>\`;
         continue;
       }
-      const ds = \`\${y}-\${String(m).padStart(2,'0')}-\${String(day).padStart(2,'0')}\`;
-      const isToday    = ds === todayStr;
-      const isTomorrow = ds === tomorrowStr;
-      const dayShifts = (map[ds] || []).sort((a,b)=>(a.start_time||'99:99') < (b.start_time||'99:99') ? -1 : 1);
 
-      // 時間帯（朝/昼/夜）でグループ分けして表示
-      // 朝 03:00-11:59 / 昼 12:00-16:59 / 夜 17:00-翌2:59
-      const getTimeSlot = t => {
-        if (!t) return 'night';
-        const h = parseInt(t.slice(0,2), 10);
-        if (h >= 3 && h < 12) return 'morning';
-        if (h >= 12 && h < 17) return 'afternoon';
-        return 'night';
-      };
-      const SLOTS = [
-        { key:'morning',   mark:'🌅', label:'朝', hc:'#d97706' },
-        { key:'afternoon', mark:'☀️',  label:'昼', hc:'#059669' },
-        { key:'night',     mark:'🌙', label:'夜', hc:'#4f46e5' }
-      ];
-      const slotMap = { morning:[], afternoon:[], night:[] };
-      dayShifts.forEach(s => slotMap[getTimeSlot(s.start_time)].push(s));
-      let badgesHtml = '';
-      SLOTS.forEach(({key, mark, label, hc}) => {
-        const arr = slotMap[key];
-        if (!arr.length) return;
-        badgesHtml += \`<div style="font-size:8px;color:\${hc};font-weight:700;line-height:1.4;margin-top:1px">\${mark}\${label}</div>\`;
-        arr.forEach(s => {
-          const color = s.calendar_color || '#4f8ef7';
-          const emoji = getActivityEmoji(s);
-          const name = escHtml(s.user_name);
+      const {day, ds, isToday, isTomorrow} = cell;
+      const bg = isToday ? '#fffbeb' : isTomorrow ? '#fff7ed' : '#fff';
+      const dayShifts = (map[ds]||[]).sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
+
+      // 日付ラベル
+      const dayLabel = isToday
+        ? \`<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#3b82f6;color:white;font-size:10px;font-weight:700">\${day}</span>\`
+        : isTomorrow
+        ? \`<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#f97316;color:white;font-size:10px;font-weight:700">\${day}</span>\`
+        : \`<span style="font-size:10px;font-weight:700;color:\${DAY_COLORS[c]}">\${day}</span>\`;
+
+      const cntLabel = dayShifts.length > 0 ? \`<span style="font-size:8px;color:#9ca3af">\${dayShifts.length}</span>\` : '';
+
+      // シフトバッジ（時間帯グループ）
+      const slotMap = {morning:[],afternoon:[],night:[]};
+      dayShifts.forEach(s => slotMap[getSlot(s.start_time)].push(s));
+      let badges = '';
+      SLOTS.forEach(({key,mark,hc}) => {
+        if (!slotMap[key].length) return;
+        badges += \`<div style="font-size:7px;color:\${hc};font-weight:700;line-height:1.3;overflow:hidden;white-space:nowrap">\${mark}</div>\`;
+        slotMap[key].forEach(s => {
+          const color = s.calendar_color||'#4f8ef7';
           const safeS = encodeURIComponent(JSON.stringify(s));
-          badgesHtml += \`<div class="day-compact-row" style="color:\${color};padding-left:6px"
-            onclick="event.stopPropagation();showDetail(decodeURIComponent('\${safeS}'))"
-            title="\${name} [\${getActivityLabel(s)}]">
-            <span style="font-size:8px">\${emoji}</span>
-            <span class="truncate" style="font-weight:600;font-size:9.5px">\${name}</span>
+          badges += \`<div style="display:flex;align-items:center;gap:1px;overflow:hidden;cursor:pointer;padding-left:2px"
+            onclick="event.stopPropagation();showDetail(decodeURIComponent('\${safeS}'))">
+            <span style="font-size:8px;flex-shrink:0">\${getActivityEmoji(s)}</span>
+            <span style="font-size:9px;font-weight:600;color:\${color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${escHtml(s.user_name)}</span>
           </div>\`;
         });
       });
 
-      html += \`<td class="cal-cell \${isToday?'today':(isTomorrow?'tomorrow':'')}" onclick="openDayView('\${ds}')">
-        <div class="cal-cell-inner" style="height:\${rowH}px;overflow:hidden">
-          <div class="flex items-center justify-between mb-0.5">
-            <span class="\${isToday?'bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold':(isTomorrow?'bg-orange-400 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold':'text-xs font-bold '+((col===0)?'text-red-500':(col===6)?'text-blue-500':'text-gray-700'))}">\${day}</span>
-            \${dayShifts.length > 0 ? \`<span style="font-size:8px;color:#9ca3af">\${dayShifts.length}</span>\` : ''}
-          </div>
-          \${calNoteBadgeHtml(ds)}
-          \${badgesHtml}
-        </div>
-      </td>\`;
+      rowHtml += \`<div style="width:\${w}%;flex-shrink:0;height:\${rowH}px;background:\${bg};border-right:\${borderR};border-bottom:\${borderB};box-sizing:border-box;padding:2px 1px;overflow:hidden;cursor:pointer;vertical-align:top"
+        onclick="openDayView('\${ds}')">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1px">\${dayLabel}\${cntLabel}</div>
+        \${calNoteBadgeHtml(ds)}
+        \${badges}
+      </div>\`;
     }
-    html += '</tr>';
+    bodyHtml += \`<div style="display:flex;width:100%">\${rowHtml}</div>\`;
   }
-  html += '</tbody></table></div>';
-  return html;
+
+  return \`<div style="width:100%;overflow-x:hidden">
+    <div style="display:flex;width:100%;border-top:1px solid #e5e7eb;border-left:1px solid #e5e7eb">\${headerHtml}</div>
+    <div style="border-left:1px solid #e5e7eb">\${bodyHtml}</div>
+  </div>\`;
 }
 
 // ============================================================
-// 週表示
+// 週表示（Flexbox方式 - 当日含む週から3週、列幅JS完全制御）
 // ============================================================
 function renderWeekView() {
   const {currentYear:y, currentMonth:m} = State;
   const firstDay = new Date(y, m-1, 1);
   const lastDay  = new Date(y, m, 0);
   const today = new Date();
-  const days = ['日','月','火','水','木','金','土'];
+  const DAYS = ['日','月','火','水','木','金','土'];
+  const DAY_COLORS = ['#ef4444','#374151','#374151','#374151','#374151','#374151','#3b82f6'];
 
   // 全週を構築
   const weeks = [];
@@ -986,93 +1013,104 @@ function renderWeekView() {
   const map = {};
   State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date] || []).push(s); });
 
-  // 当日・翌日の日付文字列
+  // 当日・翌日
   const wTodayStr = today.toISOString().split('T')[0];
   const wTomDate  = new Date(today); wTomDate.setDate(today.getDate() + 1);
   const wTomStr   = wTomDate.toISOString().split('T')[0];
 
-  // 当日を含む週のインデックスを特定（なければ0）
-  let startWeekIdx = weeks.findIndex(wk => wk.some(c => !c.other && c.date.toISOString().split('T')[0] === wTodayStr));
-  if (startWeekIdx < 0) startWeekIdx = 0;
+  // 当日含む週から3週のみ表示
+  let startIdx = weeks.findIndex(wk => wk.some(c => !c.other && c.date.toISOString().split('T')[0] === wTodayStr));
+  if (startIdx < 0) startIdx = 0;
+  const visibleWeeks = weeks.slice(startIdx, startIdx + 3);
 
-  // 当日含む週〜+2週の3週分のみ表示
-  const visibleWeeks = weeks.slice(startWeekIdx, startWeekIdx + 3);
+  // 時間帯判定
+  const getSlot = t => {
+    if (!t) return 'night';
+    const h = parseInt(t.slice(0,2),10);
+    if (h>=3 && h<12) return 'morning';
+    if (h>=12 && h<17) return 'afternoon';
+    return 'night';
+  };
+  const SLOTS = [
+    {key:'morning',  mark:'🌅', hc:'#d97706'},
+    {key:'afternoon',mark:'☀️', hc:'#059669'},
+    {key:'night',    mark:'🌙', hc:'#4f46e5'},
+  ];
 
-  // 列幅（%）をインラインstyleで計算
-  // 当日/翌日:32%、注目週のそれ以外:14%、非注目週:14.3%（均等）
-  // 1週7列の合計が100%になるよう重みで按分
-  function calcColWidths(wk, isFocusWeek) {
-    const weights = wk.map(cell => {
-      if (cell.other) return isFocusWeek ? 6 : 14;
-      const ds = cell.date.toISOString().split('T')[0];
-      if (ds === wTodayStr || ds === wTomStr) return 28; // 大
-      return isFocusWeek ? 10 : 14;                      // 中 or 均等
-    });
-    const total = weights.reduce((a, b) => a + b, 0);
-    return weights.map(w => Math.round(w / total * 1000) / 10); // 小数1桁%
-  }
-
-  let html = '<div class="p-2 pb-6 space-y-2">';
+  let html = '<div style="padding:8px 4px 24px;display:flex;flex-direction:column;gap:8px">';
 
   visibleWeeks.forEach((wk, vi) => {
-    const wi = startWeekIdx + vi; // 実際の週インデックス
-    const isFocusWeek = wk.some(c => !c.other && (c.date.toISOString().split('T')[0] === wTodayStr || c.date.toISOString().split('T')[0] === wTomStr));
-    const colWidths = calcColWidths(wk, isFocusWeek);
+    const wi = startIdx + vi;
+    const hasFocus = wk.some(c => !c.other && (c.date.toISOString().split('T')[0]===wTodayStr || c.date.toISOString().split('T')[0]===wTomStr));
 
-    const weekLabel = isFocusWeek
-      ? \`<span class="font-bold text-blue-600">第\${wi+1}週</span>\`
-      : \`第\${wi+1}週\`;
+    // 列幅：当日/翌日=30%、同週他列=8.33%（残り70%÷残り列数）
+    const keyCount  = wk.filter(c => !c.other && (c.date.toISOString().split('T')[0]===wTodayStr || c.date.toISOString().split('T')[0]===wTomStr)).length;
+    const otherW    = keyCount > 0 ? (100 - keyCount * 30) / (7 - keyCount) : 100/7;
+    const colWidths = wk.map(c => {
+      if (c.other) return keyCount > 0 ? otherW : 100/7;
+      const ds = c.date.toISOString().split('T')[0];
+      return (ds===wTodayStr || ds===wTomStr) ? 30 : otherW;
+    });
 
-    const colgroupHtml = colWidths.map(w => \`<col style="width:\${w}%">\`).join('');
+    // ヘッダー
+    const headerHtml = wk.map((cell, ci) => {
+      const ds2 = cell.other ? '' : cell.date.toISOString().split('T')[0];
+      const isT = ds2===wTodayStr, isTom = ds2===wTomStr;
+      const bg  = isT ? 'background:#fffbeb' : isTom ? 'background:#fff7ed' : '';
+      const numStyle = isT
+        ? 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#3b82f6;color:white;font-size:11px;font-weight:700'
+        : isTom
+        ? 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#f97316;color:white;font-size:11px;font-weight:700'
+        : 'font-size:13px;font-weight:700';
+      return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;text-align:center;padding:3px 1px;border-right:1px solid #e5e7eb;border-bottom:2px solid #e5e7eb;box-sizing:border-box;\${bg}">
+        <div style="font-size:9px;font-weight:600;color:\${DAY_COLORS[ci]}">\${DAYS[cell.date.getDay()]}</div>
+        <div style="\${numStyle}">\${cell.other?'':cell.date.getDate()}</div>
+      </div>\`;
+    }).join('');
 
-    html += \`<div class="bg-white rounded-xl shadow-sm overflow-hidden border \${isFocusWeek?'border-blue-200':'border-gray-100'}">
-      <div class="px-2 py-0.5 border-b \${isFocusWeek?'bg-blue-50 border-blue-100':'bg-gray-50 border-gray-100'} text-xs text-gray-500">\${weekLabel}</div>
-      <table class="w-full table-fixed border-collapse">
-        <colgroup>\${colgroupHtml}</colgroup>
-        <thead><tr>\${wk.map((cell, ci) => {
-          const ds2 = cell.other ? '' : cell.date.toISOString().split('T')[0];
-          const isToday2    = ds2 === wTodayStr;
-          const isTomorrow2 = ds2 === wTomStr;
-          const dayColor = ci===0?'color:#ef4444':ci===6?'color:#3b82f6':'color:#4b5563';
-          return \`<th style="border:1px solid #e5e7eb;padding:2px 1px;vertical-align:top;text-align:center;\${isToday2?'background:#fffbeb':(isTomorrow2?'background:#fff7ed':'')}">
-            <div style="font-size:9px;font-weight:500;\${dayColor}">\${days[cell.date.getDay()]}</div>
-            <div style="\${isToday2?'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#3b82f6;color:white;font-size:10px;font-weight:700':(isTomorrow2?'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#f97316;color:white;font-size:10px;font-weight:700':'font-size:12px;font-weight:700')}">\${cell.other?'':cell.date.getDate()}</div>
-          </th>\`;
-        }).join('')}</tr></thead>
-        <tbody><tr>\${wk.map((cell, ci) => {
-          if (cell.other) return \`<td style="border:1px solid #e5e7eb;padding:2px 1px;background:#f9fafb;vertical-align:top"></td>\`;
-          const ds = cell.date.toISOString().split('T')[0];
-          const isToday2    = ds === wTodayStr;
-          const isTomorrow2 = ds === wTomStr;
-          const shifts = (map[ds] || []).sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
-          // 時間帯グループ（朝/昼/夜）
-          const wSlot = t => { if(!t) return 'night'; const h=parseInt(t.slice(0,2),10); if(h>=3&&h<12) return 'morning'; if(h>=12&&h<17) return 'afternoon'; return 'night'; };
-          const wSlots = [
-            {key:'morning',  mark:'🌅', hc:'#d97706'},
-            {key:'afternoon',mark:'☀️', hc:'#059669'},
-            {key:'night',    mark:'🌙', hc:'#4f46e5'}
-          ];
-          const wMap = {morning:[],afternoon:[],night:[]};
-          shifts.forEach(s => wMap[wSlot(s.start_time)].push(s));
-          let badgesHtml = '';
-          wSlots.forEach(({key,mark,hc}) => {
-            const arr = wMap[key];
-            if (!arr.length) return;
-            badgesHtml += \`<div style="font-size:7px;color:\${hc};font-weight:700;line-height:1.3;margin-top:1px;overflow:hidden;white-space:nowrap">\${mark}</div>\`;
-            arr.forEach(s => {
-              const color = s.calendar_color || '#4f8ef7';
-              const safeS = encodeURIComponent(JSON.stringify(s));
-              badgesHtml += \`<div style="display:flex;align-items:center;gap:1px;color:\${color};padding-left:3px;cursor:pointer;overflow:hidden"
-                onclick="event.stopPropagation();showDetail(decodeURIComponent('\${safeS}'))">
-                <span style="font-size:8px;flex-shrink:0">\${getActivityEmoji(s)}</span>
-                <span style="font-weight:600;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${escHtml(s.user_name)}</span>
-              </div>\`;
-            });
-          });
-          const cellBg = isToday2 ? 'background:#fffbeb' : (isTomorrow2 ? 'background:#fff7ed' : '');
-          return \`<td style="border:1px solid #e5e7eb;padding:2px 1px;vertical-align:top;cursor:pointer;\${cellBg}" onclick="openDayView('\${ds}')">\${calNoteBadgeHtml(ds)}\${badgesHtml}</td>\`;
-        }).join('')}</tr></tbody>
-      </table>
+    // データ行（高さを十分に確保）
+    const cellsHtml = wk.map((cell, ci) => {
+      if (cell.other) {
+        return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:#f9fafb;border-right:1px solid #e5e7eb;box-sizing:border-box;min-height:80px"></div>\`;
+      }
+      const ds = cell.date.toISOString().split('T')[0];
+      const isT = ds===wTodayStr, isTom = ds===wTomStr;
+      const bg  = isT ? '#fffbeb' : isTom ? '#fff7ed' : '#fff';
+      const shifts = (map[ds]||[]).sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
+
+      const slotMap = {morning:[],afternoon:[],night:[]};
+      shifts.forEach(s => slotMap[getSlot(s.start_time)].push(s));
+      let badges = '';
+      SLOTS.forEach(({key,mark,hc}) => {
+        if (!slotMap[key].length) return;
+        badges += \`<div style="font-size:7px;color:\${hc};font-weight:700;line-height:1.3;white-space:nowrap;overflow:hidden">\${mark}</div>\`;
+        slotMap[key].forEach(s => {
+          const color = s.calendar_color||'#4f8ef7';
+          const safeS = encodeURIComponent(JSON.stringify(s));
+          badges += \`<div style="display:flex;align-items:center;gap:1px;overflow:hidden;cursor:pointer;padding-left:2px"
+            onclick="event.stopPropagation();showDetail(decodeURIComponent('\${safeS}'))">
+            <span style="font-size:8px;flex-shrink:0">\${getActivityEmoji(s)}</span>
+            <span style="font-size:9px;font-weight:600;color:\${color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${escHtml(s.user_name)}</span>
+          </div>\`;
+        });
+      });
+
+      return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:\${bg};border-right:1px solid #e5e7eb;box-sizing:border-box;padding:2px 1px;overflow:hidden;cursor:pointer;min-height:80px"
+        onclick="openDayView('\${ds}')">
+        \${calNoteBadgeHtml(ds)}
+        \${badges}
+      </div>\`;
+    }).join('');
+
+    const borderColor = hasFocus ? '#93c5fd' : '#e5e7eb';
+    const headBg      = hasFocus ? '#eff6ff' : '#f9fafb';
+    const labelColor  = hasFocus ? '#2563eb' : '#6b7280';
+    const labelWeight = hasFocus ? '700' : '400';
+
+    html += \`<div style="background:white;border-radius:12px;overflow:hidden;border:1px solid \${borderColor}">
+      <div style="background:\${headBg};padding:2px 8px;font-size:11px;color:\${labelColor};font-weight:\${labelWeight}">第\${wi+1}週</div>
+      <div style="display:flex;width:100%;border-top:1px solid #e5e7eb">\${headerHtml}</div>
+      <div style="display:flex;width:100%;border-bottom:1px solid #e5e7eb">\${cellsHtml}</div>
     </div>\`;
   });
 
