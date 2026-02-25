@@ -41,7 +41,37 @@ users.put('/:id/role', authMiddleware, adminMiddleware, async (c) => {
   }
 });
 
-// プロフィール更新（本人のみ）
+// メールアドレスで管理者昇格（管理者専用）
+users.post('/promote-by-email', authMiddleware, adminMiddleware, async (c) => {
+  try {
+    const { email, role } = await c.req.json();
+    
+    if (!email) {
+      return c.json({ error: 'メールアドレスが必要です' }, 400);
+    }
+    
+    const newRole = role === 'volunteer' ? 'volunteer' : 'admin';
+    
+    const user = await c.env.DB.prepare(
+      'SELECT id, name, email FROM users WHERE email = ?'
+    ).bind(email.toLowerCase().trim()).first<{ id: number; name: string; email: string }>();
+    
+    if (!user) {
+      return c.json({ error: 'このメールアドレスのユーザーが見つかりません' }, 404);
+    }
+    
+    await c.env.DB.prepare(
+      'UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(newRole, user.id).run();
+    
+    return c.json({ message: `${user.name} を${newRole === 'admin' ? '管理者' : '一般ユーザー'}に変更しました`, user: { ...user, role: newRole } });
+  } catch (err) {
+    console.error('Promote by email error:', err);
+    return c.json({ error: '権限変更に失敗しました' }, 500);
+  }
+});
+
+// 自分のプロフィール更新（名前変更、本人のみ）
 users.put('/me', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId');
@@ -51,11 +81,20 @@ users.put('/me', authMiddleware, async (c) => {
       return c.json({ error: '名前を入力してください' }, 400);
     }
     
+    if (name.trim().length > 20) {
+      return c.json({ error: '名前は20文字以内で入力してください' }, 400);
+    }
+    
     await c.env.DB.prepare(
       'UPDATE users SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
     ).bind(name.trim(), userId).run();
     
-    return c.json({ message: 'プロフィールを更新しました' });
+    // 更新後のユーザー情報を返す
+    const updated = await c.env.DB.prepare(
+      'SELECT id, name, email, role FROM users WHERE id = ?'
+    ).bind(userId).first();
+    
+    return c.json({ message: 'プロフィールを更新しました', user: updated });
   } catch (err) {
     console.error('Update profile error:', err);
     return c.json({ error: 'プロフィール更新に失敗しました' }, 500);

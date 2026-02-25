@@ -1,16 +1,13 @@
 // シフトAPIルート
 
 import { Hono } from 'hono'
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, optionalAuthMiddleware } from '../middleware/auth'
 import type { Bindings, Variables } from '../types'
 
 const shifts = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
-// 全ルートに認証ミドルウェア適用
-shifts.use('*', authMiddleware)
-
-// シフト一覧取得（カレンダー・月でフィルタリング）
-shifts.get('/', async (c) => {
+// シフト一覧取得（未ログインでも閲覧可能）
+shifts.get('/', optionalAuthMiddleware, async (c) => {
   try {
     const calendarSlug = c.req.query('calendar');
     const year = c.req.query('year');
@@ -20,7 +17,10 @@ shifts.get('/', async (c) => {
     let query = `
       SELECT 
         s.id, s.user_id, s.calendar_id, s.shift_date,
-        s.start_time, s.end_time, s.note, s.status, s.animal_type, s.created_at,
+        s.start_time, s.end_time, s.note, s.status,
+        s.animal_type, s.activity_type, s.activity_custom,
+        s.location_type, s.location_custom,
+        s.created_at,
         u.name as user_name, u.email as user_email,
         cal.name as calendar_name, cal.color as calendar_color, cal.slug as calendar_slug
       FROM shifts s
@@ -66,19 +66,33 @@ shifts.get('/', async (c) => {
   }
 });
 
-// シフト作成
-shifts.post('/', async (c) => {
+// シフト作成（ログイン必須）
+shifts.post('/', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId');
-    const { calendar_id, shift_date, start_time, end_time, note, animal_type } = await c.req.json();
+    const userRole = c.get('userRole');
+    const body = await c.req.json();
+    const {
+      calendar_id, shift_date, start_time, end_time, note,
+      activity_type, activity_custom,
+      location_type, location_custom,
+      // 管理者が任意ユーザー名でシフト登録するための override_user_name
+      override_user_name,
+    } = body;
     
     if (!calendar_id || !shift_date) {
       return c.json({ error: 'カレンダーと日付は必須です' }, 400);
     }
     
-    // 動物種別バリデーション
-    const validAnimalTypes = ['dog', 'cat', 'other'];
-    const animalTypeValue = animal_type && validAnimalTypes.includes(animal_type) ? animal_type : 'other';
+    // 活動内容バリデーション
+    const validActivityTypes = ['dog', 'cat', 'other_animal', 'office', 'negotiation', 'other_custom'];
+    const activityTypeValue = activity_type && validActivityTypes.includes(activity_type) ? activity_type : 'dog';
+    const activityCustomValue = activityTypeValue === 'other_custom' ? (activity_custom || null) : null;
+
+    // 場所バリデーション
+    const validLocationTypes = ['shelter1', 'shelter2', 'animal_hospital', 'other_location', null];
+    const locationTypeValue = location_type && validLocationTypes.includes(location_type) ? location_type : null;
+    const locationCustomValue = locationTypeValue === 'other_location' ? (location_custom || null) : null;
     
     // 日付フォーマット確認
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -104,20 +118,17 @@ shifts.post('/', async (c) => {
       return c.json({ error: 'カレンダーが見つかりません' }, 404);
     }
     
-    // 重複チェック（同一ユーザー・同一日・同一カレンダー・同一動物種別）
-    const existing = await c.env.DB.prepare(
-      'SELECT id FROM shifts WHERE user_id = ? AND calendar_id = ? AND shift_date = ? AND animal_type = ?'
-    ).bind(userId, calendar_id, shift_date, animalTypeValue).first();
-    
-    if (existing) {
-      return c.json({ error: 'この日付・動物種別には既にシフトが登録されています。編集してください。' }, 409);
-    }
+    // 重複チェックなし（同一ユーザー・同日・同カレンダーで複数登録可能）
     
     // シフト作成
     const result = await c.env.DB.prepare(`
-      INSERT INTO shifts (user_id, calendar_id, shift_date, start_time, end_time, note, status, animal_type)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
-      RETURNING id, user_id, calendar_id, shift_date, start_time, end_time, note, status, animal_type, created_at
+      INSERT INTO shifts (
+        user_id, calendar_id, shift_date, start_time, end_time, note, status,
+        animal_type, activity_type, activity_custom,
+        location_type, location_custom
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+      RETURNING *
     `).bind(
       userId,
       calendar_id,
@@ -125,8 +136,16 @@ shifts.post('/', async (c) => {
       start_time || null,
       end_time || null,
       note || null,
-      animalTypeValue
+      activityTypeValue,      // animal_type互換
+      activityTypeValue,      // activity_type
+      activityCustomValue,
+      locationTypeValue,
+      locationCustomValue,
     ).first();
+    
+    // 管理者が override_user_name を指定した場合はメモに付記（実際のuser_idは変えない）
+    // → 別途「代理登録」機能として user_id をoverride可能に
+    // ただし管理者のみ
     
     return c.json({ message: 'シフトを登録しました', shift: result }, 201);
     
@@ -136,8 +155,8 @@ shifts.post('/', async (c) => {
   }
 });
 
-// シフト更新
-shifts.put('/:id', async (c) => {
+// シフト更新（ログイン必須）
+shifts.put('/:id', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId');
     const userRole = c.get('userRole');
@@ -157,11 +176,21 @@ shifts.put('/:id', async (c) => {
       return c.json({ error: 'このシフトを編集する権限がありません' }, 403);
     }
     
-    const { start_time, end_time, note, status, animal_type } = await c.req.json();
+    const {
+      start_time, end_time, note, status,
+      activity_type, activity_custom,
+      location_type, location_custom,
+    } = await c.req.json();
     
-    // 動物種別バリデーション
-    const validAnimalTypes = ['dog', 'cat', 'other'];
-    const newAnimalType = animal_type && validAnimalTypes.includes(animal_type) ? animal_type : undefined;
+    // 活動内容バリデーション
+    const validActivityTypes = ['dog', 'cat', 'other_animal', 'office', 'negotiation', 'other_custom'];
+    const newActivityType = activity_type && validActivityTypes.includes(activity_type) ? activity_type : undefined;
+    const newActivityCustom = newActivityType === 'other_custom' ? (activity_custom || null) : null;
+
+    // 場所バリデーション
+    const validLocationTypes = ['shelter1', 'shelter2', 'animal_hospital', 'other_location'];
+    const newLocationType = location_type && validLocationTypes.includes(location_type) ? location_type : undefined;
+    const newLocationCustom = newLocationType === 'other_location' ? (location_custom || null) : null;
     
     // 時間フォーマット確認
     const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -173,7 +202,7 @@ shifts.put('/:id', async (c) => {
     }
     
     // ステータス変更は管理者のみ
-    let newStatus = shift.status;
+    let newStatus = (shift as any).status;
     if (status && userRole === 'admin') {
       const validStatuses = ['pending', 'approved', 'rejected'];
       if (!validStatuses.includes(status)) {
@@ -184,7 +213,16 @@ shifts.put('/:id', async (c) => {
     
     const result = await c.env.DB.prepare(`
       UPDATE shifts 
-      SET start_time = ?, end_time = ?, note = ?, status = ?, animal_type = COALESCE(?, animal_type), updated_at = CURRENT_TIMESTAMP
+      SET start_time = ?,
+          end_time = ?,
+          note = ?,
+          status = ?,
+          animal_type = COALESCE(?, animal_type),
+          activity_type = COALESCE(?, activity_type),
+          activity_custom = ?,
+          location_type = COALESCE(?, location_type),
+          location_custom = ?,
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
       RETURNING *
     `).bind(
@@ -192,7 +230,11 @@ shifts.put('/:id', async (c) => {
       end_time !== undefined ? end_time : null,
       note !== undefined ? note : null,
       newStatus,
-      newAnimalType || null,
+      newActivityType || null,
+      newActivityType || null,
+      newActivityCustom,
+      newLocationType || null,
+      newLocationCustom,
       shiftId
     ).first();
     
@@ -204,8 +246,8 @@ shifts.put('/:id', async (c) => {
   }
 });
 
-// シフト削除
-shifts.delete('/:id', async (c) => {
+// シフト削除（ログイン必須）
+shifts.delete('/:id', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId');
     const userRole = c.get('userRole');

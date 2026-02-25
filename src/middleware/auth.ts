@@ -42,6 +42,37 @@ export async function authMiddleware(
   await next();
 }
 
+// オプション認証ミドルウェア（未ログインでも通すが、ログイン済みなら情報をセット）
+export async function optionalAuthMiddleware(
+  c: Context<{ Bindings: Bindings; Variables: Variables }>,
+  next: Next
+) {
+  const authHeader = c.req.header('Authorization');
+  let token: string | undefined;
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else {
+    const cookieHeader = c.req.header('Cookie');
+    if (cookieHeader) {
+      const match = cookieHeader.match(/capin_token=([^;]+)/);
+      if (match) token = decodeURIComponent(match[1]);
+    }
+  }
+  
+  if (token) {
+    const secret = c.env.JWT_SECRET || 'capin-calendar-default-secret-2024';
+    const payload = await verifyJWT(token, secret);
+    if (payload) {
+      c.set('userId', payload.userId as number);
+      c.set('userRole', payload.role as string);
+      c.set('userName', payload.name as string);
+    }
+  }
+  
+  await next();
+}
+
 // 管理者専用ミドルウェア
 export async function adminMiddleware(
   c: Context<{ Bindings: Bindings; Variables: Variables }>,
