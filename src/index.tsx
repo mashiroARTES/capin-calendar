@@ -875,28 +875,40 @@ function renderMonthView() {
       const isToday = today.getFullYear()===y && today.getMonth()+1===m && today.getDate()===day;
       const dayShifts = (map[ds] || []).sort((a,b)=>(a.start_time||'99:99') < (b.start_time||'99:99') ? -1 : 1);
 
-      // 各シフトをコンパクト行で表示（最大4件+overflow）
-      const maxShow = 4;
+      // 時間帯（朝/昼/夜）でグループ分けして表示
+      // 朝 03:00-11:59 / 昼 12:00-16:59 / 夜 17:00-翌2:59
+      const getTimeSlot = t => {
+        if (!t) return 'night';
+        const h = parseInt(t.slice(0,2), 10);
+        if (h >= 3 && h < 12) return 'morning';
+        if (h >= 12 && h < 17) return 'afternoon';
+        return 'night';
+      };
+      const SLOTS = [
+        { key:'morning',   mark:'🌅', label:'朝', hc:'#d97706' },
+        { key:'afternoon', mark:'☀️',  label:'昼', hc:'#059669' },
+        { key:'night',     mark:'🌙', label:'夜', hc:'#4f46e5' }
+      ];
+      const slotMap = { morning:[], afternoon:[], night:[] };
+      dayShifts.forEach(s => slotMap[getTimeSlot(s.start_time)].push(s));
       let badgesHtml = '';
-      dayShifts.slice(0, maxShow).forEach(s => {
-        const color = s.calendar_color || '#4f8ef7';
-        const emoji = getActivityEmoji(s);
-        const timeStr = s.start_time ? s.start_time.slice(0,5) : '';
-        const endStr  = s.end_time   ? s.end_time.slice(0,5)   : '';
-        const timeLabel = timeStr ? (endStr ? timeStr+'-'+endStr : timeStr) : '';
-        const name = escHtml(s.user_name);
-        const safeS = encodeURIComponent(JSON.stringify(s));
-        badgesHtml += \`<div class="day-compact-row" style="color:\${color}"
-          onclick="event.stopPropagation();showDetail(decodeURIComponent('\${safeS}'))"
-          title="\${name}\${timeLabel?' '+timeLabel:''} [\${getActivityLabel(s)}]">
-          <span style="font-size:8px">\${emoji}</span>
-          \${timeLabel ? '<span style="color:#6b7280;font-size:8.5px">'+timeLabel+'</span>' : ''}
-          <span class="truncate" style="font-weight:600;font-size:9.5px">\${name}</span>
-        </div>\`;
+      SLOTS.forEach(({key, mark, label, hc}) => {
+        const arr = slotMap[key];
+        if (!arr.length) return;
+        badgesHtml += \`<div style="font-size:8px;color:\${hc};font-weight:700;line-height:1.4;margin-top:1px">\${mark}\${label}</div>\`;
+        arr.forEach(s => {
+          const color = s.calendar_color || '#4f8ef7';
+          const emoji = getActivityEmoji(s);
+          const name = escHtml(s.user_name);
+          const safeS = encodeURIComponent(JSON.stringify(s));
+          badgesHtml += \`<div class="day-compact-row" style="color:\${color};padding-left:6px"
+            onclick="event.stopPropagation();showDetail(decodeURIComponent('\${safeS}'))"
+            title="\${name} [\${getActivityLabel(s)}]">
+            <span style="font-size:8px">\${emoji}</span>
+            <span class="truncate" style="font-weight:600;font-size:9.5px">\${name}</span>
+          </div>\`;
+        });
       });
-      if (dayShifts.length > maxShow) {
-        badgesHtml += \`<div class="text-xs text-gray-400 pl-1" style="font-size:9px">+\${dayShifts.length-maxShow}件</div>\`;
-      }
 
       html += \`<td class="cal-cell \${isToday?'today':''}" onclick="openDayView('\${ds}')">
         <div class="cal-cell-inner">
@@ -955,18 +967,30 @@ function renderWeekView() {
           if (cell.other) return '<td class="week-cell bg-gray-50"></td>';
           const ds = cell.date.toISOString().split('T')[0];
           const shifts = (map[ds] || []).sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
-          const badgesHtml = shifts.slice(0,3).map(s => {
-            const color = s.calendar_color || '#4f8ef7';
-            const emoji = getActivityEmoji(s);
-            const time = s.start_time ? s.start_time.slice(0,5) : '';
-            const safeS = encodeURIComponent(JSON.stringify(s));
-            return \`<div class="day-compact-row" style="color:\${color}"
-              onclick="event.stopPropagation();showDetail(decodeURIComponent('\${safeS}'))">
-              <span style="font-size:8px">\${emoji}</span>
-              \${time?'<span style="font-size:8px;color:#6b7280">'+time+'</span>':''}
-              <span class="truncate" style="font-weight:600;font-size:9px">\${escHtml(s.user_name)}</span>
-            </div>\`;
-          }).join('') + (shifts.length > 3 ? \`<div style="font-size:9px;color:#9ca3af;padding-left:2px">+\${shifts.length-3}</div>\` : '');
+          // 時間帯グループ（朝/昼/夜）
+          const wSlot = t => { if(!t) return 'night'; const h=parseInt(t.slice(0,2),10); if(h>=3&&h<12) return 'morning'; if(h>=12&&h<17) return 'afternoon'; return 'night'; };
+          const wSlots = [
+            {key:'morning',  mark:'🌅', label:'朝', hc:'#d97706'},
+            {key:'afternoon',mark:'☀️', label:'昼', hc:'#059669'},
+            {key:'night',    mark:'🌙', label:'夜', hc:'#4f46e5'}
+          ];
+          const wMap = {morning:[],afternoon:[],night:[]};
+          shifts.forEach(s => wMap[wSlot(s.start_time)].push(s));
+          let badgesHtml = '';
+          wSlots.forEach(({key,mark,label,hc}) => {
+            const arr = wMap[key];
+            if (!arr.length) return;
+            badgesHtml += \`<div style="font-size:7.5px;color:\${hc};font-weight:700;line-height:1.4;margin-top:1px">\${mark}\${label}</div>\`;
+            arr.forEach(s => {
+              const color = s.calendar_color || '#4f8ef7';
+              const safeS = encodeURIComponent(JSON.stringify(s));
+              badgesHtml += \`<div class="day-compact-row" style="color:\${color};padding-left:5px"
+                onclick="event.stopPropagation();showDetail(decodeURIComponent('\${safeS}'))">
+                <span style="font-size:8px">\${getActivityEmoji(s)}</span>
+                <span class="truncate" style="font-weight:600;font-size:9px">\${escHtml(s.user_name)}</span>
+              </div>\`;
+            });
+          });
           return \`<td class="week-cell" onclick="openDayView('\${ds}')">\${calNoteBadgeHtml(ds)}\${badgesHtml}</td>\`;
         }).join('')}</tr></tbody>
       </table>
