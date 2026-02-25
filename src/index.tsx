@@ -62,12 +62,10 @@ const htmlContent = `<!DOCTYPE html>
 
     #month-table {
       width: 100%;
-      height: 100%;
       border-collapse: collapse;
       table-layout: fixed;
     }
-    #month-table tbody { height: 100%; }
-    #month-table tbody tr { height: calc((100% - 28px) / var(--cal-rows, 6)); }
+    /* tr高さはJSでインラインstyle指定するためCSSルールなし */
 
     /* シフトバッジ（月表示用コンパクト） */
     .shift-badge {
@@ -282,26 +280,16 @@ const htmlContent = `<!DOCTYPE html>
     }
     .note-edit-area:focus { border-color: #d97706; box-shadow: 0 0 0 2px #fde68a; }
 
-    /* 月ビュー：行サイズ重み（sz-lg/md/sm） */
-    .cal-cell-inner.sz-lg { min-height: 110px; }
-    .cal-cell-inner.sz-md { min-height:  80px; }
-    .cal-cell-inner.sz-sm { min-height:  48px; }
-
-    /* 週ビュー：列幅重み */
-    .week-col-lg { width: 22%; }
-    .week-col-md { width: 16%; }
-    .week-col-sm { width:  9%; }
-
     /* 翌日ハイライト */
     .cal-cell.tomorrow { background: #fff7ed; }
     .cal-cell.tomorrow:hover { background: #ffedd5; }
 
+    /* 週ビュー：今日/翌日セルの背景（列幅はJS側インラインstyle） */
+    .week-cell.today    { background: #fffbeb; }
+    .week-cell.tomorrow { background: #fff7ed; }
+
     @media (max-width: 640px) {
       .cal-cell { padding: 2px 1px; }
-      .cal-cell-inner { min-height: 48px; }
-      .cal-cell-inner.sz-lg { min-height: 76px; }
-      .cal-cell-inner.sz-md { min-height: 56px; }
-      .cal-cell-inner.sz-sm { min-height: 34px; }
       .day-compact-row { font-size: 8.5px; }
       .cal-note-bar { font-size: 8px; }
     }
@@ -896,19 +884,24 @@ function renderMonthView() {
     }
   }
 
-  let html = \`<div class="h-full flex flex-col" style="--cal-rows:\${rows}">
+  // 行ごとの重み（lg=3, md=2, sm=1）を px 高さに変換
+  // 利用可能高さが不明なためスマホ考慮の絶対px値を使用
+  const ROW_H = { 'sz-lg': 130, 'sz-md': 90, 'sz-sm': 52 };
+
+  let html = \`<div style="--cal-rows:\${rows}">
   <table id="month-table">
     <thead>
-      <tr style="height:28px">\${days.map((d,i)=>\`<th class="text-xs font-semibold pb-1 \${i===0?'text-red-500':i===6?'text-blue-500':'text-gray-500'} text-center border-b border-gray-200">\${d}</th>\`).join('')}</tr>
+      <tr style="height:26px">\${days.map((d,i)=>\`<th class="text-xs font-semibold pb-1 \${i===0?'text-red-500':i===6?'text-blue-500':'text-gray-500'} text-center border-b border-gray-200">\${d}</th>\`).join('')}</tr>
     </thead>
     <tbody>\`;
 
   for (let row = 0; row < rows; row++) {
-    html += \`<tr>\`;
+    const rowH = ROW_H[rowSzClass[row]];
+    html += \`<tr style="height:\${rowH}px">\`;
     for (let col = 0; col < 7; col++) {
       const day = row*7 + col - firstDay + 1;
       if (day < 1 || day > lastDate) {
-        html += \`<td class="cal-cell other-month"><div class="cal-cell-inner \${rowSzClass[row]}"></div></td>\`;
+        html += \`<td class="cal-cell other-month"><div class="cal-cell-inner" style="height:\${rowH}px"></div></td>\`;
         continue;
       }
       const ds = \`\${y}-\${String(m).padStart(2,'0')}-\${String(day).padStart(2,'0')}\`;
@@ -952,7 +945,7 @@ function renderMonthView() {
       });
 
       html += \`<td class="cal-cell \${isToday?'today':(isTomorrow?'tomorrow':'')}" onclick="openDayView('\${ds}')">
-        <div class="cal-cell-inner \${rowSzClass[row]}">
+        <div class="cal-cell-inner" style="height:\${rowH}px;overflow:hidden">
           <div class="flex items-center justify-between mb-0.5">
             <span class="\${isToday?'bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold':(isTomorrow?'bg-orange-400 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold':'text-xs font-bold '+((col===0)?'text-red-500':(col===6)?'text-blue-500':'text-gray-700'))}">\${day}</span>
             \${dayShifts.length > 0 ? \`<span style="font-size:8px;color:#9ca3af">\${dayShifts.length}</span>\` : ''}
@@ -978,6 +971,7 @@ function renderWeekView() {
   const today = new Date();
   const days = ['日','月','火','水','木','金','土'];
 
+  // 全週を構築
   const weeks = [];
   let week = [];
   for (let i = 0; i < firstDay.getDay(); i++) {
@@ -992,52 +986,61 @@ function renderWeekView() {
   const map = {};
   State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date] || []).push(s); });
 
-  // 当日・翌日
+  // 当日・翌日の日付文字列
   const wTodayStr = today.toISOString().split('T')[0];
   const wTomDate  = new Date(today); wTomDate.setDate(today.getDate() + 1);
   const wTomStr   = wTomDate.toISOString().split('T')[0];
 
-  // 当日を含む週・翌日を含む週のインデックスを特定
-  const todayWeekIdx    = weeks.findIndex(wk => wk.some(c => !c.other && c.date.toISOString().split('T')[0] === wTodayStr));
-  const tomorrowWeekIdx = weeks.findIndex(wk => wk.some(c => !c.other && c.date.toISOString().split('T')[0] === wTomStr));
-  const focusWeeks = new Set([todayWeekIdx, tomorrowWeekIdx].filter(i => i >= 0));
-  weeks.forEach((wk, wi) => {
-    const isFocusWeek = focusWeeks.has(wi);
+  // 当日を含む週のインデックスを特定（なければ0）
+  let startWeekIdx = weeks.findIndex(wk => wk.some(c => !c.other && c.date.toISOString().split('T')[0] === wTodayStr));
+  if (startWeekIdx < 0) startWeekIdx = 0;
+
+  // 当日含む週〜+2週の3週分のみ表示
+  const visibleWeeks = weeks.slice(startWeekIdx, startWeekIdx + 3);
+
+  // 列幅（%）をインラインstyleで計算
+  // 当日/翌日:32%、注目週のそれ以外:14%、非注目週:14.3%（均等）
+  // 1週7列の合計が100%になるよう重みで按分
+  function calcColWidths(wk, isFocusWeek) {
+    const weights = wk.map(cell => {
+      if (cell.other) return isFocusWeek ? 6 : 14;
+      const ds = cell.date.toISOString().split('T')[0];
+      if (ds === wTodayStr || ds === wTomStr) return 28; // 大
+      return isFocusWeek ? 10 : 14;                      // 中 or 均等
+    });
+    const total = weights.reduce((a, b) => a + b, 0);
+    return weights.map(w => Math.round(w / total * 1000) / 10); // 小数1桁%
+  }
+
+  let html = '<div class="p-2 pb-6 space-y-2">';
+
+  visibleWeeks.forEach((wk, vi) => {
+    const wi = startWeekIdx + vi; // 実際の週インデックス
+    const isFocusWeek = wk.some(c => !c.other && (c.date.toISOString().split('T')[0] === wTodayStr || c.date.toISOString().split('T')[0] === wTomStr));
+    const colWidths = calcColWidths(wk, isFocusWeek);
+
     const weekLabel = isFocusWeek
       ? \`<span class="font-bold text-blue-600">第\${wi+1}週</span>\`
       : \`第\${wi+1}週\`;
 
-    // 列ごとのサイズクラスを決定
-    const colSz = wk.map(cell => {
-      if (cell.other) return 'week-col-sm';
-      const ds = cell.date.toISOString().split('T')[0];
-      if (ds === wTodayStr || ds === wTomStr) return 'week-col-lg';
-      return isFocusWeek ? 'week-col-md' : 'week-col-sm';
-    });
-
-    // week-col-lg が 2 列あると合計が超えるので、注目週以外で lg 1列ある場合に残りを調整
-    const lgCount = colSz.filter(c => c === 'week-col-lg').length;
-    const mdCount = colSz.filter(c => c === 'week-col-md').length;
-    const smCount = colSz.filter(c => c === 'week-col-sm').length;
-    // 合計幅が 100% を超えないよう colgroup は CSS クラスに任せる（flex ではないので超過は自動調整）
-
-    const colgroupHtml = colSz.map(sz => \`<col class="\${sz}">\`).join('');
+    const colgroupHtml = colWidths.map(w => \`<col style="width:\${w}%">\`).join('');
 
     html += \`<div class="bg-white rounded-xl shadow-sm overflow-hidden border \${isFocusWeek?'border-blue-200':'border-gray-100'}">
-      <div class="bg-gray-50 px-3 py-1 border-b \${isFocusWeek?'border-blue-100 bg-blue-50':'border-gray-100'} text-xs text-gray-500">\${weekLabel}</div>
-      <table class="w-full table-fixed">
+      <div class="px-2 py-0.5 border-b \${isFocusWeek?'bg-blue-50 border-blue-100':'bg-gray-50 border-gray-100'} text-xs text-gray-500">\${weekLabel}</div>
+      <table class="w-full table-fixed border-collapse">
         <colgroup>\${colgroupHtml}</colgroup>
-        <thead><tr>\${wk.map((cell,ci)=>{
+        <thead><tr>\${wk.map((cell, ci) => {
           const ds2 = cell.other ? '' : cell.date.toISOString().split('T')[0];
           const isToday2    = ds2 === wTodayStr;
           const isTomorrow2 = ds2 === wTomStr;
-          return \`<th class="week-cell text-center \${ci===0?'text-red-500':ci===6?'text-blue-500':'text-gray-600'} \${isToday2?'bg-yellow-50':(isTomorrow2?'bg-orange-50':'')}">
-            <div class="text-xs font-medium">\${days[cell.date.getDay()]}</div>
-            <div class="\${isToday2?'text-sm font-bold bg-blue-500 text-white w-6 h-6 rounded-full flex items-center justify-center mx-auto':(isTomorrow2?'text-sm font-bold bg-orange-400 text-white w-6 h-6 rounded-full flex items-center justify-center mx-auto':'text-sm font-bold')}">\${cell.other?'':cell.date.getDate()}</div>
+          const dayColor = ci===0?'color:#ef4444':ci===6?'color:#3b82f6':'color:#4b5563';
+          return \`<th style="border:1px solid #e5e7eb;padding:2px 1px;vertical-align:top;text-align:center;\${isToday2?'background:#fffbeb':(isTomorrow2?'background:#fff7ed':'')}">
+            <div style="font-size:9px;font-weight:500;\${dayColor}">\${days[cell.date.getDay()]}</div>
+            <div style="\${isToday2?'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#3b82f6;color:white;font-size:10px;font-weight:700':(isTomorrow2?'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#f97316;color:white;font-size:10px;font-weight:700':'font-size:12px;font-weight:700')}">\${cell.other?'':cell.date.getDate()}</div>
           </th>\`;
         }).join('')}</tr></thead>
-        <tbody><tr>\${wk.map((cell,ci) => {
-          if (cell.other) return \`<td class="week-cell bg-gray-50 \${colSz[ci]}"></td>\`;
+        <tbody><tr>\${wk.map((cell, ci) => {
+          if (cell.other) return \`<td style="border:1px solid #e5e7eb;padding:2px 1px;background:#f9fafb;vertical-align:top"></td>\`;
           const ds = cell.date.toISOString().split('T')[0];
           const isToday2    = ds === wTodayStr;
           const isTomorrow2 = ds === wTomStr;
@@ -1045,32 +1048,34 @@ function renderWeekView() {
           // 時間帯グループ（朝/昼/夜）
           const wSlot = t => { if(!t) return 'night'; const h=parseInt(t.slice(0,2),10); if(h>=3&&h<12) return 'morning'; if(h>=12&&h<17) return 'afternoon'; return 'night'; };
           const wSlots = [
-            {key:'morning',  mark:'🌅', label:'朝', hc:'#d97706'},
-            {key:'afternoon',mark:'☀️', label:'昼', hc:'#059669'},
-            {key:'night',    mark:'🌙', label:'夜', hc:'#4f46e5'}
+            {key:'morning',  mark:'🌅', hc:'#d97706'},
+            {key:'afternoon',mark:'☀️', hc:'#059669'},
+            {key:'night',    mark:'🌙', hc:'#4f46e5'}
           ];
           const wMap = {morning:[],afternoon:[],night:[]};
           shifts.forEach(s => wMap[wSlot(s.start_time)].push(s));
           let badgesHtml = '';
-          wSlots.forEach(({key,mark,label,hc}) => {
+          wSlots.forEach(({key,mark,hc}) => {
             const arr = wMap[key];
             if (!arr.length) return;
-            badgesHtml += \`<div style="font-size:7.5px;color:\${hc};font-weight:700;line-height:1.4;margin-top:1px">\${mark}\${label}</div>\`;
+            badgesHtml += \`<div style="font-size:7px;color:\${hc};font-weight:700;line-height:1.3;margin-top:1px;overflow:hidden;white-space:nowrap">\${mark}</div>\`;
             arr.forEach(s => {
               const color = s.calendar_color || '#4f8ef7';
               const safeS = encodeURIComponent(JSON.stringify(s));
-              badgesHtml += \`<div class="day-compact-row" style="color:\${color};padding-left:5px"
+              badgesHtml += \`<div style="display:flex;align-items:center;gap:1px;color:\${color};padding-left:3px;cursor:pointer;overflow:hidden"
                 onclick="event.stopPropagation();showDetail(decodeURIComponent('\${safeS}'))">
-                <span style="font-size:8px">\${getActivityEmoji(s)}</span>
-                <span class="truncate" style="font-weight:600;font-size:9px">\${escHtml(s.user_name)}</span>
+                <span style="font-size:8px;flex-shrink:0">\${getActivityEmoji(s)}</span>
+                <span style="font-weight:600;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${escHtml(s.user_name)}</span>
               </div>\`;
             });
           });
-          return \`<td class="week-cell \${isToday2?'today':(isTomorrow2?'tomorrow':'')} \${colSz[ci]}" onclick="openDayView('\${ds}')">\${calNoteBadgeHtml(ds)}\${badgesHtml}</td>\`;
+          const cellBg = isToday2 ? 'background:#fffbeb' : (isTomorrow2 ? 'background:#fff7ed' : '');
+          return \`<td style="border:1px solid #e5e7eb;padding:2px 1px;vertical-align:top;cursor:pointer;\${cellBg}" onclick="openDayView('\${ds}')">\${calNoteBadgeHtml(ds)}\${badgesHtml}</td>\`;
         }).join('')}</tr></tbody>
       </table>
     </div>\`;
   });
+
   html += '</div>';
   return html;
 }
