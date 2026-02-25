@@ -8,6 +8,7 @@ import authRoutes from './routes/auth'
 import shiftsRoutes from './routes/shifts'
 import calendarsRoutes from './routes/calendars'
 import usersRoutes from './routes/users'
+import dayNotesRoutes from './routes/dayNotes'
 import type { Bindings, Variables } from './types'
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -23,6 +24,7 @@ app.route('/api/auth', authRoutes)
 app.route('/api/shifts', shiftsRoutes)
 app.route('/api/calendars', calendarsRoutes)
 app.route('/api/users', usersRoutes)
+app.route('/api/day-notes', dayNotesRoutes)
 
 app.get('/api/health', (c) => c.json({ status: 'ok', app: 'CAPINカレンダー' }))
 app.use('/static/*', serveStatic({ root: './' }))
@@ -223,10 +225,68 @@ const htmlContent = `<!DOCTYPE html>
     ::-webkit-scrollbar-track { background:#f1f5f9; }
     ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
 
+    /* 日ごと一行掲示板 */
+    .day-note-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      padding: 3px 6px;
+      margin-bottom: 3px;
+      font-size: 11px;
+      line-height: 1.3;
+      cursor: pointer;
+      transition: background 0.15s;
+      min-height: 22px;
+    }
+    .day-note-bar:hover { background: #fef3c7; }
+    .day-note-bar .note-icon { font-size: 11px; flex-shrink: 0; }
+    .day-note-bar .note-text { color: #92400e; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+    .day-note-bar .note-empty { color: #d97706; opacity: 0.6; font-style: italic; }
+
+    /* 月ビュー内の掲示板（小さく） */
+    .cal-note-bar {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      background: #fffbeb;
+      border-left: 2px solid #f59e0b;
+      border-radius: 2px;
+      padding: 1px 3px;
+      margin-bottom: 2px;
+      font-size: 9px;
+      line-height: 1.3;
+      cursor: pointer;
+      transition: background 0.12s;
+      overflow: hidden;
+    }
+    .cal-note-bar:hover { background: #fef3c7; }
+    .cal-note-bar .cn-text { color: #92400e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; flex: 1; }
+    .cal-note-bar .cn-empty { color: #d97706; opacity: 0.5; font-style: italic; }
+
+    /* 掲示板インライン編集エリア */
+    .note-edit-area {
+      width: 100%;
+      border: 1.5px solid #f59e0b;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      resize: none;
+      outline: none;
+      background: #fffbeb;
+      color: #78350f;
+      font-family: inherit;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .note-edit-area:focus { border-color: #d97706; box-shadow: 0 0 0 2px #fde68a; }
+
     @media (max-width: 640px) {
       .cal-cell { padding: 2px 1px; }
       .cal-cell-inner { min-height: 48px; }
       .day-compact-row { font-size: 8.5px; }
+      .cal-note-bar { font-size: 8px; }
     }
   </style>
 </head>
@@ -297,6 +357,7 @@ const State = {
   guestMode: false,
   calendars: [],
   shifts: [],
+  dayNotes: {},   // { 'YYYY-MM-DD': { content, updated_by_name, updated_at } }
   currentCalendarSlug: null,
   currentYear:  new Date().getFullYear(),
   currentMonth: new Date().getMonth() + 1,
@@ -364,18 +425,30 @@ const App = {
     State.loading = true;
     renderContent();
 
-    let path = '/shifts?year=' + State.currentYear + '&month=' + State.currentMonth;
+    const y = State.currentYear;
+    const m = State.currentMonth;
+    let path = '/shifts?year=' + y + '&month=' + m;
     if (State.currentCalendarSlug) path += '&calendar=' + State.currentCalendarSlug;
 
-    const r = await API.get(path);
-    if (r.ok) State.shifts = r.data.shifts || [];
+    // シフトと掲示板を並列取得
+    const [rShifts, rNotes] = await Promise.all([
+      API.get(path),
+      API.get('/day-notes?year=' + y + '&month=' + m),
+    ]);
+    if (rShifts.ok) State.shifts = rShifts.data.shifts || [];
     else State.shifts = [];
+
+    // 掲示板をdate→オブジェクトのマップに変換
+    State.dayNotes = {};
+    if (rNotes.ok) {
+      (rNotes.data.notes || []).forEach(n => { State.dayNotes[n.note_date] = n; });
+    }
 
     State.loading = false;
     renderContent();
   },
   async logout() {
-    API.removeToken(); State.user = null; State.shifts = []; State.guestMode = false;
+    API.removeToken(); State.user = null; State.shifts = []; State.dayNotes = {}; State.guestMode = false;
     showToast('ログアウトしました', 'info');
     this.showLogin();
   },
@@ -652,6 +725,99 @@ function renderContent() {
 }
 
 // ============================================================
+// 日ごと一行掲示板ヘルパー
+// ============================================================
+
+// 月ビューのセル内に表示するミニ掲示板バー
+function calNoteBadgeHtml(dateStr) {
+  const note = State.dayNotes[dateStr];
+  const hasContent = note && note.content && note.content.trim();
+  return \`<div class="cal-note-bar" onclick="event.stopPropagation();openDayView('\${dateStr}',true)" title="\${hasContent ? '📌 '+escHtml(note.content) : '掲示板（タップして編集）'}">
+    <span style="font-size:9px;flex-shrink:0">📌</span>
+    \${hasContent
+      ? \`<span class="cn-text">\${escHtml(note.content)}</span>\`
+      : \`<span class="cn-empty">メモを追加…</span>\`
+    }
+  </div>\`;
+}
+
+// 日別モーダル内の掲示板UI（表示＋インライン編集）
+function dayNoteSectionHtml(dateStr) {
+  const note = State.dayNotes[dateStr];
+  const content = note ? note.content : '';
+  const updater = note && note.updated_by_name ? note.updated_by_name : '';
+  const isGuest = State.guestMode || !State.user;
+
+  return \`<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4" id="day-note-section">
+    <div class="flex items-center gap-2 mb-2">
+      <span class="text-base">📌</span>
+      <span class="text-sm font-bold text-amber-800">今日のひとこと掲示板</span>
+      \${updater ? \`<span class="text-xs text-amber-500 ml-auto">最終更新: \${escHtml(updater)}</span>\` : ''}
+    </div>
+    \${isGuest
+      ? \`<div class="text-sm text-amber-700 min-h-[28px] px-1 py-0.5 rounded leading-relaxed">
+          \${content ? escHtml(content) : '<span class="opacity-50 italic">まだメモがありません</span>'}
+         </div>
+         <p class="text-xs text-amber-500 mt-1.5"><i class="fas fa-lock mr-1"></i>書き込みにはログインが必要です</p>\`
+      : \`<textarea id="day-note-input" class="note-edit-area w-full" rows="2"
+          maxlength="200" placeholder="この日のひとこと、連絡事項など…（200文字以内）"
+          oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"
+        >\${escHtml(content)}</textarea>
+        <div class="flex items-center justify-between mt-1.5">
+          <span id="day-note-count" class="text-xs text-amber-400">\${content.length}/200</span>
+          <button id="day-note-save-btn" onclick="saveDayNote('\${dateStr}')"
+            class="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded-lg font-semibold transition-colors flex items-center gap-1">
+            <i class="fas fa-save"></i>保存
+          </button>
+        </div>\`
+    }
+  </div>\`;
+}
+
+// 掲示板を保存してUIを更新
+async function saveDayNote(dateStr) {
+  const input = document.getElementById('day-note-input');
+  const btn   = document.getElementById('day-note-save-btn');
+  if (!input || !btn) return;
+  const content = input.value.trim();
+  btn.disabled = true; btn.innerHTML = '<div class="spinner w-3 h-3"></div>';
+  const r = await API.put('/day-notes/' + dateStr, { content });
+  if (r.ok) {
+    // Stateを即時更新（リロードなし）
+    State.dayNotes[dateStr] = r.data.note;
+    showToast('掲示板を更新しました', 'success', 2000);
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i>保存';
+    // 文字数カウント更新
+    const cnt = document.getElementById('day-note-count');
+    if (cnt) cnt.textContent = content.length + '/200';
+    // カレンダーのバッジも更新（月ビューの場合）
+    if (State.viewMode === 'month' || State.viewMode === 'week') {
+      renderContent();
+    }
+  } else {
+    showToast(r.data.error || '保存に失敗しました', 'error');
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i>保存';
+  }
+}
+
+// 一覧ビューのノートバナー（クリックで日別モーダルへ）
+function listNoteBannerHtml(dateStr) {
+  const note = State.dayNotes[dateStr];
+  const hasContent = note && note.content && note.content.trim();
+  const isGuest = State.guestMode || !State.user;
+  // 内容があるか、ログイン済みのときだけ表示
+  if (!hasContent && isGuest) return '';
+  return \`<div class="day-note-bar mb-2" onclick="openDayView('\${dateStr}',true)">
+    <span class="note-icon">📌</span>
+    \${hasContent
+      ? \`<span class="note-text">\${escHtml(note.content)}</span>\`
+      : \`<span class="note-empty">この日のひとことを書く…</span>\`
+    }
+    \${!isGuest ? '<span style="font-size:9px;color:#d97706;flex-shrink:0"><i class="fas fa-pencil-alt"></i></span>' : ''}
+  </div>\`;
+}
+
+// ============================================================
 // 活動内容の表示ラベル取得
 // ============================================================
 function getActivityLabel(s) {
@@ -738,6 +904,7 @@ function renderMonthView() {
             <span class="\${isToday?'bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold':'text-xs font-bold '+((col===0)?'text-red-500':(col===6)?'text-blue-500':'text-gray-700')}">\${day}</span>
             \${dayShifts.length > 0 ? \`<span style="font-size:8px;color:#9ca3af">\${dayShifts.length}</span>\` : ''}
           </div>
+          \${calNoteBadgeHtml(ds)}
           \${badgesHtml}
         </div>
       </td>\`;
@@ -800,7 +967,7 @@ function renderWeekView() {
               <span class="truncate" style="font-weight:600;font-size:9px">\${escHtml(s.user_name)}</span>
             </div>\`;
           }).join('') + (shifts.length > 3 ? \`<div style="font-size:9px;color:#9ca3af;padding-left:2px">+\${shifts.length-3}</div>\` : '');
-          return \`<td class="week-cell" onclick="openDayView('\${ds}')">\${badgesHtml}</td>\`;
+          return \`<td class="week-cell" onclick="openDayView('\${ds}')">\${calNoteBadgeHtml(ds)}\${badgesHtml}</td>\`;
         }).join('')}</tr></tbody>
       </table>
     </div>\`;
@@ -844,6 +1011,7 @@ function renderListView() {
         \${isToday?'<span class="bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full">今日</span>':''}
         <span class="text-xs text-gray-400">\${sorted.length}件</span>
       </div>
+      \${listNoteBannerHtml(date)}
       <div class="space-y-1.5">\`;
 
     sorted.forEach(s => {
@@ -1115,7 +1283,7 @@ function showSfError(msg) {
 // ============================================================
 // 日別一覧モーダル（日付タップ時）
 // ============================================================
-function openDayView(dateStr) {
+function openDayView(dateStr, focusNote = false) {
   const dayShifts = State.shifts
     .filter(s => s.shift_date === dateStr)
     .sort((a, b) => {
@@ -1263,6 +1431,9 @@ function openDayView(dateStr) {
         </button>
       </div>
 
+      <!-- ★ 日ごと一行掲示板（最上部・全員編集可） -->
+      \${dayNoteSectionHtml(dateStr)}
+
       <!-- 表示切り替えタブ -->
       <div class="flex gap-1 mb-3">
         <button id="dv-tab-simple" onclick="dvSwitchTab('simple')"
@@ -1287,6 +1458,28 @@ function openDayView(dateStr) {
       </button>\`}
     </div>
   </div>\`;
+
+  // 掲示板のテキストエリアに文字数カウントを紐付け
+  const noteInput = document.getElementById('day-note-input');
+  if (noteInput) {
+    noteInput.addEventListener('input', () => {
+      const cnt = document.getElementById('day-note-count');
+      if (cnt) cnt.textContent = noteInput.value.length + '/200';
+      noteInput.style.height = 'auto';
+      noteInput.style.height = noteInput.scrollHeight + 'px';
+    });
+    // Ctrl+Enter で保存
+    noteInput.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        saveDayNote(dateStr);
+      }
+    });
+    if (focusNote) {
+      noteInput.focus();
+      noteInput.select();
+    }
+  }
 }
 
 function dvSwitchTab(tab) {
