@@ -282,9 +282,26 @@ const htmlContent = `<!DOCTYPE html>
     }
     .note-edit-area:focus { border-color: #d97706; box-shadow: 0 0 0 2px #fde68a; }
 
+    /* 月ビュー：行サイズ重み（sz-lg/md/sm） */
+    .cal-cell-inner.sz-lg { min-height: 110px; }
+    .cal-cell-inner.sz-md { min-height:  80px; }
+    .cal-cell-inner.sz-sm { min-height:  48px; }
+
+    /* 週ビュー：列幅重み */
+    .week-col-lg { width: 22%; }
+    .week-col-md { width: 16%; }
+    .week-col-sm { width:  9%; }
+
+    /* 翌日ハイライト */
+    .cal-cell.tomorrow { background: #fff7ed; }
+    .cal-cell.tomorrow:hover { background: #ffedd5; }
+
     @media (max-width: 640px) {
       .cal-cell { padding: 2px 1px; }
       .cal-cell-inner { min-height: 48px; }
+      .cal-cell-inner.sz-lg { min-height: 76px; }
+      .cal-cell-inner.sz-md { min-height: 56px; }
+      .cal-cell-inner.sz-sm { min-height: 34px; }
       .day-compact-row { font-size: 8.5px; }
       .cal-note-bar { font-size: 8px; }
     }
@@ -856,6 +873,29 @@ function renderMonthView() {
 
   const rows = Math.ceil((firstDay + lastDate) / 7);
 
+  // 当日・翌日の日付文字列
+  const todayStr = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  const tomorrowDate = new Date(today); tomorrowDate.setDate(today.getDate() + 1);
+  const tomorrowStr  = tomorrowDate.getFullYear()+'-'+String(tomorrowDate.getMonth()+1).padStart(2,'0')+'-'+String(tomorrowDate.getDate()).padStart(2,'0');
+
+  // 各行のサイズクラスを決定（当日/翌日を含む行 → sz-lg、隣接行 → sz-md、それ以外 → sz-sm）
+  const rowSzClass = Array.from({length: rows}, (_, row) => {
+    for (let col = 0; col < 7; col++) {
+      const day = row*7 + col - firstDay + 1;
+      if (day < 1 || day > lastDate) continue;
+      const ds = y+'-'+String(m).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+      if (ds === todayStr || ds === tomorrowStr) return 'sz-lg';
+    }
+    return 'sz-sm';
+  });
+  // 当日/翌日行に隣接する行を sz-md に昇格
+  for (let r = 0; r < rows; r++) {
+    if (rowSzClass[r] === 'sz-lg') {
+      if (r > 0        && rowSzClass[r-1] === 'sz-sm') rowSzClass[r-1] = 'sz-md';
+      if (r < rows - 1 && rowSzClass[r+1] === 'sz-sm') rowSzClass[r+1] = 'sz-md';
+    }
+  }
+
   let html = \`<div class="h-full flex flex-col" style="--cal-rows:\${rows}">
   <table id="month-table">
     <thead>
@@ -864,15 +904,16 @@ function renderMonthView() {
     <tbody>\`;
 
   for (let row = 0; row < rows; row++) {
-    html += '<tr>';
+    html += \`<tr>\`;
     for (let col = 0; col < 7; col++) {
       const day = row*7 + col - firstDay + 1;
       if (day < 1 || day > lastDate) {
-        html += '<td class="cal-cell other-month"><div class="cal-cell-inner"></div></td>';
+        html += \`<td class="cal-cell other-month"><div class="cal-cell-inner \${rowSzClass[row]}"></div></td>\`;
         continue;
       }
       const ds = \`\${y}-\${String(m).padStart(2,'0')}-\${String(day).padStart(2,'0')}\`;
-      const isToday = today.getFullYear()===y && today.getMonth()+1===m && today.getDate()===day;
+      const isToday    = ds === todayStr;
+      const isTomorrow = ds === tomorrowStr;
       const dayShifts = (map[ds] || []).sort((a,b)=>(a.start_time||'99:99') < (b.start_time||'99:99') ? -1 : 1);
 
       // 時間帯（朝/昼/夜）でグループ分けして表示
@@ -910,10 +951,10 @@ function renderMonthView() {
         });
       });
 
-      html += \`<td class="cal-cell \${isToday?'today':''}" onclick="openDayView('\${ds}')">
-        <div class="cal-cell-inner">
+      html += \`<td class="cal-cell \${isToday?'today':(isTomorrow?'tomorrow':'')}" onclick="openDayView('\${ds}')">
+        <div class="cal-cell-inner \${rowSzClass[row]}">
           <div class="flex items-center justify-between mb-0.5">
-            <span class="\${isToday?'bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold':'text-xs font-bold '+((col===0)?'text-red-500':(col===6)?'text-blue-500':'text-gray-700')}">\${day}</span>
+            <span class="\${isToday?'bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold':(isTomorrow?'bg-orange-400 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold':'text-xs font-bold '+((col===0)?'text-red-500':(col===6)?'text-blue-500':'text-gray-700'))}">\${day}</span>
             \${dayShifts.length > 0 ? \`<span style="font-size:8px;color:#9ca3af">\${dayShifts.length}</span>\` : ''}
           </div>
           \${calNoteBadgeHtml(ds)}
@@ -951,21 +992,55 @@ function renderWeekView() {
   const map = {};
   State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date] || []).push(s); });
 
-  let html = '<div class="p-3 max-w-screen-xl mx-auto pb-6 space-y-3">';
+  // 当日・翌日
+  const wTodayStr = today.toISOString().split('T')[0];
+  const wTomDate  = new Date(today); wTomDate.setDate(today.getDate() + 1);
+  const wTomStr   = wTomDate.toISOString().split('T')[0];
+
+  // 当日を含む週・翌日を含む週のインデックスを特定
+  const todayWeekIdx    = weeks.findIndex(wk => wk.some(c => !c.other && c.date.toISOString().split('T')[0] === wTodayStr));
+  const tomorrowWeekIdx = weeks.findIndex(wk => wk.some(c => !c.other && c.date.toISOString().split('T')[0] === wTomStr));
+  const focusWeeks = new Set([todayWeekIdx, tomorrowWeekIdx].filter(i => i >= 0));
   weeks.forEach((wk, wi) => {
-    html += \`<div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-      <div class="bg-gray-50 px-3 py-1 border-b border-gray-100 text-xs font-semibold text-gray-500">第\${wi+1}週</div>
+    const isFocusWeek = focusWeeks.has(wi);
+    const weekLabel = isFocusWeek
+      ? \`<span class="font-bold text-blue-600">第\${wi+1}週</span>\`
+      : \`第\${wi+1}週\`;
+
+    // 列ごとのサイズクラスを決定
+    const colSz = wk.map(cell => {
+      if (cell.other) return 'week-col-sm';
+      const ds = cell.date.toISOString().split('T')[0];
+      if (ds === wTodayStr || ds === wTomStr) return 'week-col-lg';
+      return isFocusWeek ? 'week-col-md' : 'week-col-sm';
+    });
+
+    // week-col-lg が 2 列あると合計が超えるので、注目週以外で lg 1列ある場合に残りを調整
+    const lgCount = colSz.filter(c => c === 'week-col-lg').length;
+    const mdCount = colSz.filter(c => c === 'week-col-md').length;
+    const smCount = colSz.filter(c => c === 'week-col-sm').length;
+    // 合計幅が 100% を超えないよう colgroup は CSS クラスに任せる（flex ではないので超過は自動調整）
+
+    const colgroupHtml = colSz.map(sz => \`<col class="\${sz}">\`).join('');
+
+    html += \`<div class="bg-white rounded-xl shadow-sm overflow-hidden border \${isFocusWeek?'border-blue-200':'border-gray-100'}">
+      <div class="bg-gray-50 px-3 py-1 border-b \${isFocusWeek?'border-blue-100 bg-blue-50':'border-gray-100'} text-xs text-gray-500">\${weekLabel}</div>
       <table class="w-full table-fixed">
+        <colgroup>\${colgroupHtml}</colgroup>
         <thead><tr>\${wk.map((cell,ci)=>{
-          const isToday = cell.date.toDateString() === today.toDateString();
-          return \`<th class="week-cell text-center \${ci===0?'text-red-500':ci===6?'text-blue-500':'text-gray-600'}">
+          const ds2 = cell.other ? '' : cell.date.toISOString().split('T')[0];
+          const isToday2    = ds2 === wTodayStr;
+          const isTomorrow2 = ds2 === wTomStr;
+          return \`<th class="week-cell text-center \${ci===0?'text-red-500':ci===6?'text-blue-500':'text-gray-600'} \${isToday2?'bg-yellow-50':(isTomorrow2?'bg-orange-50':'')}">
             <div class="text-xs font-medium">\${days[cell.date.getDay()]}</div>
-            <div class="\${isToday?'text-sm font-bold bg-blue-500 text-white w-6 h-6 rounded-full flex items-center justify-center mx-auto':'text-sm font-bold'}">\${cell.other?'':cell.date.getDate()}</div>
+            <div class="\${isToday2?'text-sm font-bold bg-blue-500 text-white w-6 h-6 rounded-full flex items-center justify-center mx-auto':(isTomorrow2?'text-sm font-bold bg-orange-400 text-white w-6 h-6 rounded-full flex items-center justify-center mx-auto':'text-sm font-bold')}">\${cell.other?'':cell.date.getDate()}</div>
           </th>\`;
         }).join('')}</tr></thead>
-        <tbody><tr>\${wk.map(cell => {
-          if (cell.other) return '<td class="week-cell bg-gray-50"></td>';
+        <tbody><tr>\${wk.map((cell,ci) => {
+          if (cell.other) return \`<td class="week-cell bg-gray-50 \${colSz[ci]}"></td>\`;
           const ds = cell.date.toISOString().split('T')[0];
+          const isToday2    = ds === wTodayStr;
+          const isTomorrow2 = ds === wTomStr;
           const shifts = (map[ds] || []).sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
           // 時間帯グループ（朝/昼/夜）
           const wSlot = t => { if(!t) return 'night'; const h=parseInt(t.slice(0,2),10); if(h>=3&&h<12) return 'morning'; if(h>=12&&h<17) return 'afternoon'; return 'night'; };
@@ -991,7 +1066,7 @@ function renderWeekView() {
               </div>\`;
             });
           });
-          return \`<td class="week-cell" onclick="openDayView('\${ds}')">\${calNoteBadgeHtml(ds)}\${badgesHtml}</td>\`;
+          return \`<td class="week-cell \${isToday2?'today':(isTomorrow2?'tomorrow':'')} \${colSz[ci]}" onclick="openDayView('\${ds}')">\${calNoteBadgeHtml(ds)}\${badgesHtml}</td>\`;
         }).join('')}</tr></tbody>
       </table>
     </div>\`;
