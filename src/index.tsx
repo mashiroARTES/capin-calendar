@@ -1421,17 +1421,95 @@ function openDayView(dateStr, focusNote = false) {
     </div>\`;
   } else {
     defaultBodyHtml = \`<div class="space-y-0.5">\${dayShifts.map(shiftCompactRowHtml).join('')}</div>\`;
-    // 活動内容サマリー
-    const actMap = {};
-    dayShifts.forEach(s => {
-      const k = s.activity_type || s.animal_type || 'other_animal';
-      actMap[k] = (actMap[k]||0) + 1;
-    });
-    const summaryHtml = Object.entries(actMap).map(([k,cnt]) => {
-      const at = ACTIVITY_TYPES[k] || ACTIVITY_TYPES.other_animal;
-      return \`<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full" style="background:\${at.color}18;color:\${at.color}">\${at.emoji} \${cnt}名</span>\`;
-    }).join('');
-    if (summaryHtml) defaultBodyHtml += \`<div class="flex flex-wrap gap-1.5 mt-3 pt-2 border-t border-gray-100">\${summaryHtml}</div>\`;
+
+    // ============================================================
+    // 下部サマリーパネル
+    // ・全て表示中 → 場所ごと一覧
+    // ・場所指定中 → 朝/昼/夜 × 犬/猫 の人数グリッド
+    // ============================================================
+    const isAllView = State.currentCalendarSlug === null;
+
+    // 時間帯判定ヘルパー
+    const toSlot = t => {
+      if (!t) return 'night';
+      const h = parseInt(t.slice(0,2), 10);
+      if (h >= 3 && h < 12) return 'morning';
+      if (h >= 12 && h < 17) return 'afternoon';
+      return 'night';
+    };
+    const SLOT_DEF = [
+      { key: 'morning',   icon: '🌅', label: '朝', hc: '#d97706' },
+      { key: 'afternoon', icon: '☀️',  label: '昼', hc: '#059669' },
+      { key: 'night',     icon: '🌙', label: '夜', hc: '#4f46e5' },
+    ];
+
+    let summaryHtml = '';
+
+    if (isAllView) {
+      // ── 全て表示中：場所ごとの一覧 ──────────────────────────
+      const locMap = {};
+      dayShifts.forEach(s => {
+        const loc = getLocationLabel(s) || '（場所未設定）';
+        (locMap[loc] = locMap[loc] || []).push(s);
+      });
+      const locEntries = Object.entries(locMap).sort((a,b) => b[1].length - a[1].length);
+
+      const rowsHtml = locEntries.map(([loc, shifts]) => {
+        // この場所の 犬・猫 人数
+        const dog = shifts.filter(s => (s.activity_type||s.animal_type) === 'dog').length;
+        const cat = shifts.filter(s => (s.activity_type||s.animal_type) === 'cat').length;
+        const animalBadges =
+          (dog ? \`<span class="text-xs font-semibold" style="color:#3b82f6">🐶\${dog}</span>\` : '') +
+          (cat ? \`<span class="text-xs font-semibold" style="color:#ec4899">🐱\${cat}</span>\` : '');
+        return \`<div class="flex items-center justify-between gap-2 py-1 border-b border-gray-50 last:border-0">
+          <span class="text-xs font-semibold text-gray-700 truncate flex-1">\${escHtml(loc)}</span>
+          <span class="text-xs text-gray-400 flex-shrink-0">\${shifts.length}名</span>
+          \${animalBadges ? \`<div class="flex items-center gap-1 flex-shrink-0">\${animalBadges}</div>\` : ''}
+        </div>\`;
+      }).join('');
+
+      summaryHtml = \`<div class="mt-3 pt-2 border-t border-gray-100">
+        <div class="text-xs font-bold text-gray-500 mb-1.5"><i class="fas fa-map-marker-alt mr-1"></i>場所別</div>
+        <div class="bg-gray-50 rounded-lg px-3 py-1">\${rowsHtml}</div>
+      </div>\`;
+
+    } else {
+      // ── 場所指定中：朝/昼/夜 × 犬/猫 グリッド ──────────────
+      // スロット × 活動タイプ の人数を集計
+      const grid = {};
+      SLOT_DEF.forEach(({key}) => { grid[key] = { dog: 0, cat: 0 }; });
+      dayShifts.forEach(s => {
+        const slot = toSlot(s.start_time);
+        const act  = s.activity_type || s.animal_type || '';
+        if (act === 'dog') grid[slot].dog++;
+        if (act === 'cat') grid[slot].cat++;
+      });
+
+      // スロットに1件でもあるものだけ表示
+      const visibleSlots = SLOT_DEF.filter(({key}) =>
+        dayShifts.some(s => toSlot(s.start_time) === key)
+      );
+
+      if (visibleSlots.length > 0) {
+        const colsHtml = visibleSlots.map(({key, icon, label, hc}) => {
+          const {dog, cat} = grid[key];
+          return \`<div class="flex-1 rounded-lg px-2 py-1.5 text-center" style="background:\${hc}12;border:1px solid \${hc}30">
+            <div class="text-xs font-bold mb-1" style="color:\${hc}">\${icon} \${label}</div>
+            <div class="flex justify-center gap-2">
+              <span class="text-xs font-semibold" style="color:#3b82f6">🐶\${dog}</span>
+              <span class="text-xs font-semibold" style="color:#ec4899">🐱\${cat}</span>
+            </div>
+          </div>\`;
+        }).join('');
+
+        summaryHtml = \`<div class="mt-3 pt-2 border-t border-gray-100">
+          <div class="text-xs font-bold text-gray-500 mb-1.5"><i class="fas fa-paw mr-1"></i>時間帯別 犬・猫 人数</div>
+          <div class="flex gap-1.5">\${colsHtml}</div>
+        </div>\`;
+      }
+    }
+
+    if (summaryHtml) defaultBodyHtml += summaryHtml;
   }
 
   // 時刻順ビュー（ボタンで切り替え）
