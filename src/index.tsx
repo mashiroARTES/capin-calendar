@@ -1017,8 +1017,8 @@ function renderListView() {
     sorted.forEach(s => {
       const color = s.calendar_color || '#4f8ef7';
       const timeStr = s.start_time ? s.start_time.slice(0,5) + (s.end_time?' ～ '+s.end_time.slice(0,5):'') : '';
-      const stMap = { pending:'未確認', approved:'承認済', rejected:'却下' };
-      const stColor = { pending:'yellow', approved:'green', rejected:'red' };
+      const stMap = { approved:'承認済', rejected:'却下' };
+      const stColor = { approved:'green', rejected:'red' };
       const safeS = encodeURIComponent(JSON.stringify(s));
       const isMine = s.user_id === (State.user && State.user.id);
       const locLabel = getLocationLabel(s);
@@ -1031,7 +1031,7 @@ function renderListView() {
             <span class="font-semibold text-gray-800 text-sm">\${escHtml(s.user_name)}</span>
             \${isMine?'<span class="text-xs bg-blue-500 text-white px-1.5 py-0.5 rounded-full">自分</span>':''}
             <span class="text-xs font-medium" style="color:\${color}">\${escHtml(locLabel)}</span>
-            <span class="text-xs px-1.5 py-0.5 rounded bg-\${stColor[s.status]||'gray'}-100 text-\${stColor[s.status]||'gray'}-700">\${stMap[s.status]||s.status}</span>
+            \${stMap[s.status]?('<span class="text-xs px-1.5 py-0.5 rounded bg-'+stColor[s.status]+'-100 text-'+stColor[s.status]+'-700">'+stMap[s.status]+'</span>'):''}
           </div>
           <div class="flex items-center gap-2 flex-wrap mt-0.5">
             <span class="text-xs text-gray-500">\${getActivityEmoji(s)} \${escHtml(actLabel)}</span>
@@ -1321,8 +1321,8 @@ function openDayView(dateStr, focusNote = false) {
     const isMine  = s.user_id === (State.user && State.user.id);
     const start   = s.start_time ? s.start_time.slice(0,5) : null;
     const end_t   = s.end_time   ? s.end_time.slice(0,5)   : null;
-    const stMap   = { pending:'未確認', approved:'承認済', rejected:'却下' };
-    const stClass = { pending:'bg-yellow-100 text-yellow-700', approved:'bg-green-100 text-green-700', rejected:'bg-red-100 text-red-700' };
+    const stMap   = { approved:'承認済', rejected:'却下' };
+    const stClass = { approved:'bg-green-100 text-green-700', rejected:'bg-red-100 text-red-700' };
     const safeS   = encodeURIComponent(JSON.stringify(s));
     return \`<div class="flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-gray-50 transition-colors \${isMine?'bg-blue-50':''}"
       onclick="showDetail(decodeURIComponent('\${safeS}'))">
@@ -1343,7 +1343,7 @@ function openDayView(dateStr, focusNote = false) {
         <div>\${emoji} \${escHtml(actLabel.replace(/^[^ ]+ /,''))}</div>
       </div>
       <!-- ステータス -->
-      <span class="text-xs \${stClass[s.status]||'bg-gray-100 text-gray-600'} px-1.5 py-0.5 rounded flex-shrink-0">\${stMap[s.status]||s.status}</span>
+      \${stMap[s.status]?('<span class="text-xs '+stClass[s.status]+' px-1.5 py-0.5 rounded flex-shrink-0">'+stMap[s.status]+'</span>'):''}
     </div>\`;
   }
 
@@ -1354,8 +1354,8 @@ function openDayView(dateStr, focusNote = false) {
     const actLabel = getActivityLabel(s);
     const locLabel = getLocationLabel(s);
     const safeS   = encodeURIComponent(JSON.stringify(s));
-    const stMap   = { pending:'未確認', approved:'承認済', rejected:'却下' };
-    const stClass = { pending:'bg-yellow-100 text-yellow-700', approved:'bg-green-100 text-green-700', rejected:'bg-red-100 text-red-700' };
+    const stMap   = { approved:'承認済', rejected:'却下' };
+    const stClass = { approved:'bg-green-100 text-green-700', rejected:'bg-red-100 text-red-700' };
     const isMine  = s.user_id === (State.user && State.user.id);
     const start   = s.start_time ? s.start_time.slice(0,5) : null;
     const end_t   = s.end_time   ? s.end_time.slice(0,5)   : null;
@@ -1372,7 +1372,7 @@ function openDayView(dateStr, focusNote = false) {
         <div class="flex items-center gap-1.5 flex-wrap">
           <span class="font-bold text-gray-800 text-sm">\${escHtml(s.user_name)}</span>
           \${isMine ? '<span class="text-xs bg-blue-500 text-white px-1.5 py-0.5 rounded-full">自分</span>' : ''}
-          <span class="text-xs \${stClass[s.status]||'bg-gray-100 text-gray-600'} px-1.5 py-0.5 rounded ml-auto">\${stMap[s.status]||s.status}</span>
+          \${stMap[s.status]?('<span class="text-xs '+stClass[s.status]+' px-1.5 py-0.5 rounded ml-auto">'+stMap[s.status]+'</span>'):''}
         </div>
         <div class="flex items-center gap-1.5 flex-wrap">
           <span class="shift-cal-dot" style="background:\${color}"></span>
@@ -1502,8 +1502,8 @@ function showDetail(shiftStr) {
   const actLabel = getActivityLabel(s);
   const locLabel = getLocationLabel(s);
   const timeStr = s.start_time ? s.start_time.slice(0,5) + (s.end_time?' ～ '+s.end_time.slice(0,5):'') : '時刻未設定';
-  const stMap = { pending:'未確認', approved:'承認済', rejected:'却下' };
-  const stColor = { pending:'yellow', approved:'green', rejected:'red' };
+  const stMap = { approved:'承認済', rejected:'却下' };
+  const stColor = { approved:'green', rejected:'red' };
   const isOwner = s.user_id === (State.user && State.user.id);
   const isAdmin = State.user && State.user.role === 'admin';
   const safeS = encodeURIComponent(JSON.stringify(s));
@@ -1536,10 +1536,7 @@ function showDetail(shiftStr) {
           <i class="fas fa-clock w-5 text-center text-gray-400"></i><span>\${timeStr}</span>
         </div>
         \${s.note?\`<div class="flex items-start gap-3 text-gray-600"><i class="fas fa-sticky-note w-5 text-center text-gray-400 mt-0.5"></i><span>\${escHtml(s.note)}</span></div>\`:''}
-        <div class="flex items-center gap-3">
-          <i class="fas fa-info-circle w-5 text-center text-gray-400"></i>
-          <span class="text-xs px-2 py-0.5 rounded-full font-medium bg-\${stColor[s.status]||'gray'}-100 text-\${stColor[s.status]||'gray'}-700">\${stMap[s.status]||s.status}</span>
-        </div>
+        \${stMap[s.status]?('<div class="flex items-center gap-3"><i class="fas fa-info-circle w-5 text-center text-gray-400"></i><span class="text-xs px-2 py-0.5 rounded-full font-medium bg-'+stColor[s.status]+'-100 text-'+stColor[s.status]+'-700">'+stMap[s.status]+'</span></div>'):''}
       </div>
       \${(isOwner || isAdmin) ? \`
       <div class="flex gap-2">
@@ -1620,7 +1617,7 @@ function openEditForm(shiftStr) {
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">ステータス（管理者のみ）</label>
           <select id="ef-status" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-            <option value="pending" \${s.status==='pending'?'selected':''}>未確認</option>
+            <option value="pending" \${s.status==='pending'?'selected':''}>登録済み</option>
             <option value="approved" \${s.status==='approved'?'selected':''}>承認済</option>
             <option value="rejected" \${s.status==='rejected'?'selected':''}>却下</option>
           </select>
