@@ -1077,7 +1077,7 @@ function renderWeekView() {
     // データ行（高さを十分に確保）
     const cellsHtml = wk.map((cell, ci) => {
       if (cell.other) {
-        return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:#f9fafb;border-right:1px solid #e5e7eb;box-sizing:border-box;min-height:120px"></div>\`;
+        return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:#f9fafb;border-right:1px solid #e5e7eb;box-sizing:border-box;min-height:240px"></div>\`;
       }
       const ds = cell.date.toISOString().split('T')[0];
       const isT = ds===wTodayStr, isTom = ds===wTomStr;
@@ -1104,7 +1104,7 @@ function renderWeekView() {
       // 当日/翌日列はスクロール可能に
       const cellOverflow = (isT || isTom) ? 'overflow-y:auto;-webkit-overflow-scrolling:touch' : 'overflow:hidden';
 
-      return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:\${bg};border-right:1px solid #e5e7eb;box-sizing:border-box;padding:0;\${cellOverflow};cursor:pointer;min-height:120px;position:relative"
+      return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:\${bg};border-right:1px solid #e5e7eb;box-sizing:border-box;padding:0;\${cellOverflow};cursor:pointer;min-height:240px;position:relative"
         onclick="openDayView('\${ds}')">
         <div style="position:absolute;inset:0;z-index:0"></div>
         <div style="position:relative;z-index:1;padding:2px 1px;pointer-events:auto">
@@ -1119,7 +1119,7 @@ function renderWeekView() {
     const labelColor  = hasFocus ? '#2563eb' : '#6b7280';
     const labelWeight = hasFocus ? '700' : '400';
     // 当日含む週は高め（スクロール可能）、他週はコンパクト
-    const cellMaxH    = hasFocus ? '360px' : '160px';
+    const cellMaxH    = hasFocus ? '720px' : '320px';
 
     html += \`<div style="background:white;border-radius:12px;border:1px solid \${borderColor};overflow:hidden">
       <div style="background:\${headBg};padding:2px 8px;font-size:11px;color:\${labelColor};font-weight:\${labelWeight}">第\${wi+1}週</div>
