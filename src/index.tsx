@@ -671,7 +671,6 @@ function renderShell() {
           <button onclick="navNext()" class="nav-btn" aria-label="次">
             <i class="fas fa-chevron-right text-xs text-gray-600"></i>
           </button>
-          <button onclick="goToToday()" class="nav-btn text-xs text-gray-600 px-2">今日</button>
         </div>
         <div class="flex items-center gap-1">
           <button id="view-month" onclick="setViewMode('month')" class="view-btn \${State.viewMode==='month'?'active':''}">
@@ -682,6 +681,9 @@ function renderShell() {
           </button>
           <button id="view-list"  onclick="setViewMode('list')"  class="view-btn \${State.viewMode==='list'?'active':''}">
             <i class="fas fa-list mr-1 text-xs"></i>一覧
+          </button>
+          <button onclick="openTodayDetail()" class="view-btn">
+            <i class="fas fa-calendar-day mr-1 text-xs"></i>今日
           </button>
         </div>
       </div>
@@ -2183,6 +2185,22 @@ function goToToday() {
   State.weekOffset   = 0;
   updateMonthLabel();
   App.loadAndRenderShifts();
+}
+
+function openTodayDetail() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  // 当日が現在ロード済みの月と異なる場合は月を切り替えてから開く
+  const now = new Date();
+  const ty = now.getFullYear(), tm = now.getMonth() + 1;
+  if (State.currentYear !== ty || State.currentMonth !== tm) {
+    State.currentYear  = ty;
+    State.currentMonth = tm;
+    State.weekOffset   = 0;
+    updateMonthLabel();
+    App.loadAndRenderShifts().then(() => openDayView(todayStr));
+  } else {
+    openDayView(todayStr);
+  }
 }
 
 function setViewMode(mode) {
