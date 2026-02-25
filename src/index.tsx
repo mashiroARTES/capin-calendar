@@ -884,6 +884,30 @@ function getLocationLabel(s) {
   return s.calendar_name || '';
 }
 
+// 場所別登録人数バッジHTML（セル最下部用）
+function locationCountHtml(shifts) {
+  if (!shifts || shifts.length === 0) return '';
+  // 場所ごとにカウント（表示名 → {count, color}）
+  const locMap = {};
+  shifts.forEach(s => {
+    const label = getLocationLabel(s) || '未設定';
+    const color = s.calendar_color || '#9ca3af';
+    if (!locMap[label]) locMap[label] = { count: 0, color };
+    locMap[label].count++;
+  });
+  const entries = Object.entries(locMap);
+  if (entries.length === 0) return '';
+  // 各場所を「●場所名 N」の形でコンパクトに横並び
+  const items = entries.map(([label, {count, color}]) =>
+    \`<span style="display:inline-flex;align-items:center;gap:1px;white-space:nowrap;font-size:7px;line-height:1.3">
+      <span style="color:\${color};font-size:7px">●</span>
+      <span style="color:#374151;overflow:hidden;text-overflow:ellipsis;max-width:32px;display:inline-block;vertical-align:bottom" title="\${escHtml(label)}">\${escHtml(label)}</span>
+      <span style="color:#6b7280;font-weight:700">\${count}</span>
+    </span>\`
+  ).join('');
+  return \`<div style="margin-top:auto;padding-top:2px;border-top:1px dashed #e5e7eb;display:flex;flex-wrap:wrap;gap:1px 3px;margin-left:1px;margin-right:1px">\${items}</div>\`;
+}
+
 // ============================================================
 // 月表示（Flexbox方式 - 列幅・行高さをJS完全制御）
 // ============================================================
@@ -1012,13 +1036,16 @@ function renderMonthView() {
       // 当日/翌日行はスクロール可能に、他は隠す
       const overflowStyle = (isToday || isTomorrow) ? 'overflow-y:auto;-webkit-overflow-scrolling:touch' : 'overflow:hidden';
 
+      const locBadge = locationCountHtml(dayShifts);
+
       rowHtml += \`<div style="width:\${w}%;flex-shrink:0;height:\${rowH}px;background:\${bg};border-right:\${borderR};border-bottom:\${borderB};box-sizing:border-box;padding:0;\${overflowStyle};cursor:pointer;vertical-align:top;position:relative"
         onclick="openDayView('\${ds}')">
         <div style="position:absolute;inset:0;z-index:0"></div>
-        <div style="position:relative;z-index:1;padding:2px 1px;pointer-events:auto">
+        <div style="position:relative;z-index:1;padding:2px 1px;display:flex;flex-direction:column;min-height:\${rowH}px;pointer-events:auto;box-sizing:border-box">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1px">\${dayLabel}\${cntLabel}</div>
           \${calNoteBadgeHtml(ds)}
           \${badges}
+          \${locBadge}
         </div>
       </div>\`;
     }
@@ -1145,12 +1172,14 @@ function renderWeekView() {
       });
 
       const cellOverflow = (isT||isTom) ? 'overflow-y:auto;-webkit-overflow-scrolling:touch' : 'overflow:hidden';
+      const locBadge2 = locationCountHtml(shifts);
       return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:\${bg};border-right:1px solid #e5e7eb;box-sizing:border-box;padding:0;\${cellOverflow};cursor:pointer;min-height:240px;position:relative"
         onclick="openDayView('\${ds}')">
         <div style="position:absolute;inset:0;z-index:0"></div>
-        <div style="position:relative;z-index:1;padding:2px 1px;pointer-events:auto">
+        <div style="position:relative;z-index:1;padding:2px 1px;display:flex;flex-direction:column;min-height:240px;pointer-events:auto;box-sizing:border-box">
           \${calNoteBadgeHtml(ds)}
           \${badges}
+          \${locBadge2}
         </div>
       </div>\`;
     }).join('');
