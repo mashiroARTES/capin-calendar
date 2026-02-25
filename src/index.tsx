@@ -876,16 +876,16 @@ function renderMonthView() {
     cells.push({ day, ds, isToday: ds===todayStr, isTomorrow: ds===tomorrowStr });
   }
 
-  // 各行の高さ（当日/翌日含む行=240px、隣接行=100px、他=50px）
+  // 各行の高さ（当日/翌日含む行=280px、隣接行=100px、他=52px）
   const rowHeights = Array.from({length: rows}, (_, r) => {
     const hasKey = cells.slice(r*7, r*7+7).some(c => c && (c.isToday || c.isTomorrow));
-    return hasKey ? 240 : 50;
+    return hasKey ? 280 : 52;
   });
   // 隣接行を100pxに昇格
   for (let r = 0; r < rows; r++) {
-    if (rowHeights[r] === 240) {
-      if (r > 0       && rowHeights[r-1] === 50) rowHeights[r-1] = 100;
-      if (r < rows-1  && rowHeights[r+1] === 50) rowHeights[r+1] = 100;
+    if (rowHeights[r] === 280) {
+      if (r > 0       && rowHeights[r-1] === 52) rowHeights[r-1] = 100;
+      if (r < rows-1  && rowHeights[r+1] === 52) rowHeights[r+1] = 100;
     }
   }
 
@@ -971,11 +971,17 @@ function renderMonthView() {
         });
       });
 
-      rowHtml += \`<div style="width:\${w}%;flex-shrink:0;height:\${rowH}px;background:\${bg};border-right:\${borderR};border-bottom:\${borderB};box-sizing:border-box;padding:2px 1px;overflow:hidden;cursor:pointer;vertical-align:top"
+      // 当日/翌日行はスクロール可能に、他は隠す
+      const overflowStyle = (isToday || isTomorrow) ? 'overflow-y:auto;-webkit-overflow-scrolling:touch' : 'overflow:hidden';
+
+      rowHtml += \`<div style="width:\${w}%;flex-shrink:0;height:\${rowH}px;background:\${bg};border-right:\${borderR};border-bottom:\${borderB};box-sizing:border-box;padding:0;\${overflowStyle};cursor:pointer;vertical-align:top;position:relative"
         onclick="openDayView('\${ds}')">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1px">\${dayLabel}\${cntLabel}</div>
-        \${calNoteBadgeHtml(ds)}
-        \${badges}
+        <div style="position:absolute;inset:0;z-index:0"></div>
+        <div style="position:relative;z-index:1;padding:2px 1px;pointer-events:auto">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1px">\${dayLabel}\${cntLabel}</div>
+          \${calNoteBadgeHtml(ds)}
+          \${badges}
+        </div>
       </div>\`;
     }
     bodyHtml += \`<div style="display:flex;width:100%">\${rowHtml}</div>\`;
@@ -1071,7 +1077,7 @@ function renderWeekView() {
     // データ行（高さを十分に確保）
     const cellsHtml = wk.map((cell, ci) => {
       if (cell.other) {
-        return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:#f9fafb;border-right:1px solid #e5e7eb;box-sizing:border-box;min-height:80px"></div>\`;
+        return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:#f9fafb;border-right:1px solid #e5e7eb;box-sizing:border-box;min-height:120px"></div>\`;
       }
       const ds = cell.date.toISOString().split('T')[0];
       const isT = ds===wTodayStr, isTom = ds===wTomStr;
@@ -1095,10 +1101,16 @@ function renderWeekView() {
         });
       });
 
-      return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:\${bg};border-right:1px solid #e5e7eb;box-sizing:border-box;padding:2px 1px;overflow:hidden;cursor:pointer;min-height:80px"
+      // 当日/翌日列はスクロール可能に
+      const cellOverflow = (isT || isTom) ? 'overflow-y:auto;-webkit-overflow-scrolling:touch' : 'overflow:hidden';
+
+      return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:\${bg};border-right:1px solid #e5e7eb;box-sizing:border-box;padding:0;\${cellOverflow};cursor:pointer;min-height:120px;position:relative"
         onclick="openDayView('\${ds}')">
-        \${calNoteBadgeHtml(ds)}
-        \${badges}
+        <div style="position:absolute;inset:0;z-index:0"></div>
+        <div style="position:relative;z-index:1;padding:2px 1px;pointer-events:auto">
+          \${calNoteBadgeHtml(ds)}
+          \${badges}
+        </div>
       </div>\`;
     }).join('');
 
@@ -1106,11 +1118,13 @@ function renderWeekView() {
     const headBg      = hasFocus ? '#eff6ff' : '#f9fafb';
     const labelColor  = hasFocus ? '#2563eb' : '#6b7280';
     const labelWeight = hasFocus ? '700' : '400';
+    // 当日含む週は高め（スクロール可能）、他週はコンパクト
+    const cellMaxH    = hasFocus ? '360px' : '160px';
 
-    html += \`<div style="background:white;border-radius:12px;overflow:hidden;border:1px solid \${borderColor}">
+    html += \`<div style="background:white;border-radius:12px;border:1px solid \${borderColor};overflow:hidden">
       <div style="background:\${headBg};padding:2px 8px;font-size:11px;color:\${labelColor};font-weight:\${labelWeight}">第\${wi+1}週</div>
       <div style="display:flex;width:100%;border-top:1px solid #e5e7eb">\${headerHtml}</div>
-      <div style="display:flex;width:100%;border-bottom:1px solid #e5e7eb">\${cellsHtml}</div>
+      <div style="display:flex;width:100%;border-bottom:1px solid #e5e7eb;max-height:\${cellMaxH};overflow-y:auto;-webkit-overflow-scrolling:touch">\${cellsHtml}</div>
     </div>\`;
   });
 
