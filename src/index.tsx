@@ -367,6 +367,7 @@ const State = {
   currentYear:  new Date().getFullYear(),
   currentMonth: new Date().getMonth() + 1,
   viewMode: 'month',   // 'month' | 'week' | 'list'
+  weekOffset: 0,       // 週ビュー用：当日含む週から何週ずらすか
   loading: false,
 };
 
@@ -432,22 +433,33 @@ const App = {
 
     const y = State.currentYear;
     const m = State.currentMonth;
-    let path = '/shifts?year=' + y + '&month=' + m;
-    if (State.currentCalendarSlug) path += '&calendar=' + State.currentCalendarSlug;
 
-    // シフトと掲示板を並列取得
-    const [rShifts, rNotes] = await Promise.all([
-      API.get(path),
-      API.get('/day-notes?year=' + y + '&month=' + m),
-    ]);
-    if (rShifts.ok) State.shifts = rShifts.data.shifts || [];
-    else State.shifts = [];
-
-    // 掲示板をdate→オブジェクトのマップに変換
-    State.dayNotes = {};
-    if (rNotes.ok) {
-      (rNotes.data.notes || []).forEach(n => { State.dayNotes[n.note_date] = n; });
+    // 週ビューの場合、表示範囲が月をまたぐ可能性があるため両月ロード
+    let months = [[y, m]];
+    if (State.viewMode === 'week') {
+      const range = getWeekViewRange();
+      const sm = range.startDate.getMonth()+1, sy = range.startDate.getFullYear();
+      const em = range.endDate.getMonth()+1,   ey = range.endDate.getFullYear();
+      months = [];
+      if (!months.some(([my,mm])=>my===sy&&mm===sm)) months.push([sy,sm]);
+      if (!months.some(([my,mm])=>my===ey&&mm===em)) months.push([ey,em]);
     }
+
+    const slug = State.currentCalendarSlug;
+    const fetchMonth = (fy, fm) => {
+      let p = '/shifts?year='+fy+'&month='+fm;
+      if (slug) p += '&calendar='+slug;
+      return Promise.all([API.get(p), API.get('/day-notes?year='+fy+'&month='+fm)]);
+    };
+
+    const results = await Promise.all(months.map(([fy,fm]) => fetchMonth(fy,fm)));
+
+    State.shifts = [];
+    State.dayNotes = {};
+    results.forEach(([rShifts, rNotes]) => {
+      if (rShifts.ok) State.shifts = State.shifts.concat(rShifts.data.shifts || []);
+      if (rNotes.ok) (rNotes.data.notes || []).forEach(n => { State.dayNotes[n.note_date] = n; });
+    });
 
     State.loading = false;
     renderContent();
@@ -650,13 +662,13 @@ function renderShell() {
     <div class="bg-white border-b border-gray-100 flex-shrink-0 px-3 py-1.5">
       <div class="max-w-screen-xl mx-auto flex items-center justify-between gap-2">
         <div class="flex items-center gap-1.5">
-          <button onclick="changeMonth(-1)" class="nav-btn" aria-label="前月">
+          <button onclick="navPrev()" class="nav-btn" aria-label="前">
             <i class="fas fa-chevron-left text-xs text-gray-600"></i>
           </button>
           <span id="month-label" class="text-sm font-bold text-gray-800 min-w-[96px] text-center">
             \${State.currentYear}年\${State.currentMonth}月
           </span>
-          <button onclick="changeMonth(1)" class="nav-btn" aria-label="翌月">
+          <button onclick="navNext()" class="nav-btn" aria-label="次">
             <i class="fas fa-chevron-right text-xs text-gray-600"></i>
           </button>
           <button onclick="goToToday()" class="nav-btn text-xs text-gray-600 px-2">今日</button>
@@ -703,7 +715,33 @@ function updateCalTabs() {
 
 function updateMonthLabel() {
   const el = document.getElementById('month-label');
-  if (el) el.textContent = State.currentYear + '年' + State.currentMonth + '月';
+  if (!el) return;
+  if (State.viewMode === 'week') {
+    // 週ビュー：表示中の2週の開始日〜終了日を表示
+    const range = getWeekViewRange();
+    const s = range.startDate, e = range.endDate;
+    const sm = s.getMonth()+1, sd = s.getDate();
+    const em = e.getMonth()+1, ed = e.getDate();
+    el.textContent = sm + '/' + sd + '〜' + em + '/' + ed;
+  } else {
+    el.textContent = State.currentYear + '年' + State.currentMonth + '月';
+  }
+}
+
+// 週ビューで表示する2週の開始/終了Dateを返す
+function getWeekViewRange() {
+  const today = new Date();
+  // 当日を含む週の日曜日を基点に
+  const baseDate = new Date(today);
+  baseDate.setDate(today.getDate() - today.getDay()); // 週の日曜へ
+  // weekOffset週ぶんずらす
+  baseDate.setDate(baseDate.getDate() + State.weekOffset * 7);
+  // 開始: baseDateの日曜
+  const startDate = new Date(baseDate);
+  // 終了: startDate + 13日（2週=14日間の最終日=土曜）
+  const endDate = new Date(baseDate);
+  endDate.setDate(baseDate.getDate() + 13);
+  return { startDate, endDate };
 }
 
 function updateViewBtns() {
@@ -994,40 +1032,35 @@ function renderMonthView() {
 }
 
 // ============================================================
-// 週表示（Flexbox方式 - 当日含む週から3週、列幅JS完全制御）
+// 週表示（2週表示・weekOffsetで1週ずつ移動）
 // ============================================================
 function renderWeekView() {
-  const {currentYear:y, currentMonth:m} = State;
-  const firstDay = new Date(y, m-1, 1);
-  const lastDay  = new Date(y, m, 0);
   const today = new Date();
   const DAYS = ['日','月','火','水','木','金','土'];
   const DAY_COLORS = ['#ef4444','#374151','#374151','#374151','#374151','#374151','#3b82f6'];
 
-  // 全週を構築
-  const weeks = [];
-  let week = [];
-  for (let i = 0; i < firstDay.getDay(); i++) {
-    week.push({ date: new Date(y, m-1, 1 - firstDay.getDay() + i), other: true });
-  }
-  for (let d = 1; d <= lastDay.getDate(); d++) {
-    const date = new Date(y, m-1, d);
-    week.push({ date, other: false });
-    if (date.getDay() === 6 || d === lastDay.getDate()) { weeks.push(week); week = []; }
-  }
+  const todayStr = today.toISOString().split('T')[0];
+  const tomDate  = new Date(today); tomDate.setDate(today.getDate()+1);
+  const tomStr   = tomDate.toISOString().split('T')[0];
 
+  // getWeekViewRange() で表示開始日（日曜）を取得
+  const {startDate} = getWeekViewRange();
+
+  // 2週分（14日）のセルを生成
+  const allDays = [];
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(startDate);
+    d.setDate(startDate.getDate() + i);
+    allDays.push(d);
+  }
+  // 週に分割
+  const week0 = allDays.slice(0, 7);
+  const week1 = allDays.slice(7, 14);
+  const weeks = [week0, week1];
+
+  // シフトマップ
   const map = {};
   State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date] || []).push(s); });
-
-  // 当日・翌日
-  const wTodayStr = today.toISOString().split('T')[0];
-  const wTomDate  = new Date(today); wTomDate.setDate(today.getDate() + 1);
-  const wTomStr   = wTomDate.toISOString().split('T')[0];
-
-  // 当日含む週から3週のみ表示
-  let startIdx = weeks.findIndex(wk => wk.some(c => !c.other && c.date.toISOString().split('T')[0] === wTodayStr));
-  if (startIdx < 0) startIdx = 0;
-  const visibleWeeks = weeks.slice(startIdx, startIdx + 3);
 
   // 時間帯判定
   const getSlot = t => {
@@ -1043,45 +1076,55 @@ function renderWeekView() {
     {key:'night',    mark:'🌙', hc:'#4f46e5'},
   ];
 
+  // 列幅計算（当日/翌日=30%、他=（100-30×n）÷残り列数）
+  function calcWidths(days) {
+    const keyCount = days.filter(d => {
+      const ds = d.toISOString().split('T')[0];
+      return ds===todayStr || ds===tomStr;
+    }).length;
+    const otherW = keyCount > 0 ? (100 - keyCount*30)/(7-keyCount) : 100/7;
+    return days.map(d => {
+      const ds = d.toISOString().split('T')[0];
+      return (ds===todayStr || ds===tomStr) ? 30 : otherW;
+    });
+  }
+
   let html = '<div style="padding:8px 4px 24px;display:flex;flex-direction:column;gap:8px">';
 
-  visibleWeeks.forEach((wk, vi) => {
-    const wi = startIdx + vi;
-    const hasFocus = wk.some(c => !c.other && (c.date.toISOString().split('T')[0]===wTodayStr || c.date.toISOString().split('T')[0]===wTomStr));
+  weeks.forEach((days, wi) => {
+    const colWidths = calcWidths(days);
+    const hasFocus  = days.some(d => { const ds=d.toISOString().split('T')[0]; return ds===todayStr||ds===tomStr; });
 
-    // 列幅：当日/翌日=30%、同週他列=8.33%（残り70%÷残り列数）
-    const keyCount  = wk.filter(c => !c.other && (c.date.toISOString().split('T')[0]===wTodayStr || c.date.toISOString().split('T')[0]===wTomStr)).length;
-    const otherW    = keyCount > 0 ? (100 - keyCount * 30) / (7 - keyCount) : 100/7;
-    const colWidths = wk.map(c => {
-      if (c.other) return keyCount > 0 ? otherW : 100/7;
-      const ds = c.date.toISOString().split('T')[0];
-      return (ds===wTodayStr || ds===wTomStr) ? 30 : otherW;
-    });
+    // 週ヘッダー（日付範囲）
+    const s = days[0], e = days[6];
+    const weekLabel = (s.getMonth()+1)+'/'+s.getDate()+'〜'+(e.getMonth()+1)+'/'+e.getDate();
+    const borderColor = hasFocus ? '#93c5fd' : '#e5e7eb';
+    const headBg      = hasFocus ? '#eff6ff' : '#f9fafb';
+    const labelColor  = hasFocus ? '#2563eb' : '#6b7280';
+    const labelWeight = hasFocus ? '700' : '400';
+    const cellMaxH    = hasFocus ? '720px' : '320px';
 
-    // ヘッダー
-    const headerHtml = wk.map((cell, ci) => {
-      const ds2 = cell.other ? '' : cell.date.toISOString().split('T')[0];
-      const isT = ds2===wTodayStr, isTom = ds2===wTomStr;
+    // 曜日ヘッダー行
+    const headerHtml = days.map((d, ci) => {
+      const ds  = d.toISOString().split('T')[0];
+      const isT = ds===todayStr, isTom = ds===tomStr;
       const bg  = isT ? 'background:#fffbeb' : isTom ? 'background:#fff7ed' : '';
       const numStyle = isT
         ? 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#3b82f6;color:white;font-size:11px;font-weight:700'
         : isTom
         ? 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#f97316;color:white;font-size:11px;font-weight:700'
-        : 'font-size:13px;font-weight:700';
+        : 'font-size:13px;font-weight:700;color:'+DAY_COLORS[ci];
       return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;text-align:center;padding:3px 1px;border-right:1px solid #e5e7eb;border-bottom:2px solid #e5e7eb;box-sizing:border-box;\${bg}">
-        <div style="font-size:9px;font-weight:600;color:\${DAY_COLORS[ci]}">\${DAYS[cell.date.getDay()]}</div>
-        <div style="\${numStyle}">\${cell.other?'':cell.date.getDate()}</div>
+        <div style="font-size:9px;font-weight:600;color:\${DAY_COLORS[ci]}">\${DAYS[d.getDay()]}</div>
+        <div style="\${numStyle}">\${d.getDate()}</div>
       </div>\`;
     }).join('');
 
-    // データ行（高さを十分に確保）
-    const cellsHtml = wk.map((cell, ci) => {
-      if (cell.other) {
-        return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:#f9fafb;border-right:1px solid #e5e7eb;box-sizing:border-box;min-height:240px"></div>\`;
-      }
-      const ds = cell.date.toISOString().split('T')[0];
-      const isT = ds===wTodayStr, isTom = ds===wTomStr;
-      const bg  = isT ? '#fffbeb' : isTom ? '#fff7ed' : '#fff';
+    // データ行
+    const cellsHtml = days.map((d, ci) => {
+      const ds   = d.toISOString().split('T')[0];
+      const isT  = ds===todayStr, isTom = ds===tomStr;
+      const bg   = isT ? '#fffbeb' : isTom ? '#fff7ed' : '#fff';
       const shifts = (map[ds]||[]).sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
 
       const slotMap = {morning:[],afternoon:[],night:[]};
@@ -1101,9 +1144,7 @@ function renderWeekView() {
         });
       });
 
-      // 当日/翌日列はスクロール可能に
-      const cellOverflow = (isT || isTom) ? 'overflow-y:auto;-webkit-overflow-scrolling:touch' : 'overflow:hidden';
-
+      const cellOverflow = (isT||isTom) ? 'overflow-y:auto;-webkit-overflow-scrolling:touch' : 'overflow:hidden';
       return \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:\${bg};border-right:1px solid #e5e7eb;box-sizing:border-box;padding:0;\${cellOverflow};cursor:pointer;min-height:240px;position:relative"
         onclick="openDayView('\${ds}')">
         <div style="position:absolute;inset:0;z-index:0"></div>
@@ -1114,15 +1155,8 @@ function renderWeekView() {
       </div>\`;
     }).join('');
 
-    const borderColor = hasFocus ? '#93c5fd' : '#e5e7eb';
-    const headBg      = hasFocus ? '#eff6ff' : '#f9fafb';
-    const labelColor  = hasFocus ? '#2563eb' : '#6b7280';
-    const labelWeight = hasFocus ? '700' : '400';
-    // 当日含む週は高め（スクロール可能）、他週はコンパクト
-    const cellMaxH    = hasFocus ? '720px' : '320px';
-
     html += \`<div style="background:white;border-radius:12px;border:1px solid \${borderColor};overflow:hidden">
-      <div style="background:\${headBg};padding:2px 8px;font-size:11px;color:\${labelColor};font-weight:\${labelWeight}">第\${wi+1}週</div>
+      <div style="background:\${headBg};padding:2px 8px;font-size:11px;color:\${labelColor};font-weight:\${labelWeight}">\${weekLabel}</div>
       <div style="display:flex;width:100%;border-top:1px solid #e5e7eb">\${headerHtml}</div>
       <div style="display:flex;width:100%;border-bottom:1px solid #e5e7eb;max-height:\${cellMaxH};overflow-y:auto;-webkit-overflow-scrolling:touch">\${cellsHtml}</div>
     </div>\`;
@@ -2084,6 +2118,27 @@ function showAdminMsg(msg, type) {
 // ============================================================
 // ナビ操作
 // ============================================================
+function navPrev() {
+  if (State.viewMode === 'week') changeWeek(-1);
+  else changeMonth(-1);
+}
+function navNext() {
+  if (State.viewMode === 'week') changeWeek(1);
+  else changeMonth(1);
+}
+
+function changeWeek(delta) {
+  State.weekOffset += delta;
+  // 表示範囲の月をState.currentYear/currentMonthに同期（先頭週の月を基準）
+  const range = getWeekViewRange();
+  const mid = new Date(range.startDate);
+  mid.setDate(mid.getDate() + 7); // 2週目先頭を基準月に
+  State.currentYear  = mid.getFullYear();
+  State.currentMonth = mid.getMonth() + 1;
+  updateMonthLabel();
+  App.loadAndRenderShifts();
+}
+
 function changeMonth(delta) {
   State.currentMonth += delta;
   if (State.currentMonth > 12) { State.currentMonth = 1; State.currentYear++; }
@@ -2096,13 +2151,16 @@ function goToToday() {
   const now = new Date();
   State.currentYear  = now.getFullYear();
   State.currentMonth = now.getMonth() + 1;
+  State.weekOffset   = 0;
   updateMonthLabel();
   App.loadAndRenderShifts();
 }
 
 function setViewMode(mode) {
   State.viewMode = mode;
+  if (mode === 'week') State.weekOffset = 0;
   updateViewBtns();
+  updateMonthLabel();
   renderContent();
 }
 
@@ -2185,8 +2243,8 @@ function bindShellEvents() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeModal();
     if (!document.querySelector('.modal-overlay')) {
-      if (e.key === 'ArrowLeft')  changeMonth(-1);
-      if (e.key === 'ArrowRight') changeMonth(1);
+      if (e.key === 'ArrowLeft')  navPrev();
+      if (e.key === 'ArrowRight') navNext();
     }
   }, { once: true });
 }
