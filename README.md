@@ -1,94 +1,327 @@
 # 🐾 CAPINカレンダー
 
-CAPIN（キャピン）動物保護団体向けの **ボランティアシフト管理カレンダー** システムです。
+**CAPINボランティア向けシフト管理カレンダーアプリ**
 
-## 🌐 アクセスURL
-- **本番環境**: https://capin-calendar.pages.dev
-- **プラットフォーム**: Cloudflare Pages
+ボランティアさんが「いつ・どこで・何の活動をするか」をスマホからかんたんに登録・確認できるシフト管理ツールです。
 
-## ✨ 機能一覧
+---
 
-### 認証
-- ✅ アカウント作成（お名前・メールアドレス・パスワード）
-- ✅ メールアドレス＋パスワードでログイン
-- ✅ パスワード忘れ → 新規アカウント作成への誘導
-- ✅ JWT認証（7日間有効）
+## 🌐 公開URL
 
-### カレンダー管理（3種類）
-- 🔵 **第１シェルター**
-- 🟢 **第２シェルター**
-- 🟠 **パル動物病院**
+| 環境 | URL |
+|------|-----|
+| 本番（Cloudflare Pages） | **https://capin-calendar.pages.dev** |
 
-### シフト管理
-- ✅ 時分指定でのシフト登録（開始・終了時刻）
-- ✅ 担当動物の選択：🐶 犬 / 🐱 猫 / 🐾 その他
-- ✅ メモ欄付き
-- ✅ 自分のシフトを編集・削除
+---
 
-### 表示モード（3種類）
-- 📅 **月表示**: 月カレンダー。動物種別ごとにグループ分けして表示
-- 📆 **週表示**: 週単位の一覧
-- 📋 **一覧表示**: 日付×動物種別でまとめた詳細一覧
+## 📱 ボランティアさん向け — 使い方ガイド
 
-### 管理者機能
-- シフトステータス管理（未確認/承認済/却下）
+### アカウント登録・ログイン
 
-## 🔗 APIエンドポイント
+1. アプリを開くと「ログイン」画面が表示されます
+2. 初めての方は「新規登録」から名前・メールアドレス・パスワード（8文字以上）を入力して登録
+3. 登録後は自動でログインされます
 
-| メソッド | パス | 説明 | 認証 |
-|---|---|---|---|
-| GET | `/api/health` | ヘルスチェック | 不要 |
-| POST | `/api/auth/register` | ユーザー登録 | 不要 |
-| POST | `/api/auth/login` | ログイン | 不要 |
-| GET | `/api/auth/me` | 現在のユーザー情報 | 必要 |
-| GET | `/api/calendars` | カレンダー一覧 | 不要 |
-| GET | `/api/shifts?year=&month=&calendar=` | シフト一覧 | 必要 |
-| POST | `/api/shifts` | シフト作成 | 必要 |
-| PUT | `/api/shifts/:id` | シフト更新 | 必要 |
-| DELETE | `/api/shifts/:id` | シフト削除 | 必要 |
+> ログインしなくても「ゲストとして見る」ボタンで **閲覧のみ** 可能です
 
-## 📊 データモデル
+---
 
-### users
-- `id`, `name`, `email`, `password_hash`, `role`（volunteer/admin）
+### カレンダーの見方
 
-### calendars
-- `id`, `slug`, `name`, `color`, `description`
+画面上部のタブで表示を切り替えられます。
 
-### shifts
-- `id`, `user_id`, `calendar_id`, `shift_date`（YYYY-MM-DD）
-- `start_time`（HH:MM）, `end_time`（HH:MM）
-- `animal_type`（dog/cat/other）
-- `note`, `status`（pending/approved/rejected）
+| タブ | 内容 |
+|------|------|
+| **月** | 月カレンダー表示。当日・翌日のセルが大きく表示されます |
+| **週** | 2週間表示。`＜` `＞` で1週ずつ前後に移動できます |
+| **一覧** | 日付順のリスト表示 |
+| **今日** | 今日の詳細ポップアップをすぐに開きます |
 
-## 🏗️ 技術スタック
-- **バックエンド**: Hono (TypeScript) + Cloudflare Workers
-- **データベース**: Cloudflare D1（SQLite）
-- **認証**: PBKDF2パスワードハッシュ + HS256 JWT
-- **フロントエンド**: Vanilla JS + Tailwind CSS (CDN) + FontAwesome
-- **ビルド**: Vite + @hono/vite-cloudflare-pages
+#### カレンダーセルの見方（月・週共通）
 
-## 🚀 ローカル開発
-
-```bash
-npm install
-npx wrangler d1 migrations apply capin-calendar-production --local
-npm run build
-pm2 start ecosystem.config.cjs
+```
+┌─────────────────┐
+│ 25              │  ← 日付（今日は青丸・翌日はオレンジ丸）
+│ 🌅              │  ← 朝（03:00〜11:59）のシフト
+│  🐶 山田         │
+│ ☀️              │  ← 昼（12:00〜16:59）のシフト
+│  🐱 鈴木         │
+│ 🌙              │  ← 夜（17:00〜翌02:59）のシフト
+│ ─────────────── │
+│ ●第１シェルター 2 │  ← 場所別人数（最下部）
+└─────────────────┘
 ```
 
-## 🌍 デプロイ済み情報
-- **Cloudflare Pages プロジェクト**: capin-calendar
-- **D1 データベース**: capin-calendar-production
-- **D1 データベースID**: 70b24fb6-4ca1-4fb3-ae7c-7fbbe78d9b5a
-- **ステータス**: ✅ 稼働中
-- **最終デプロイ**: 2026-02-24
+**時間帯アイコン**
+- 🌅 朝（03:00〜11:59）
+- ☀️ 昼（12:00〜16:59）
+- 🌙 夜（17:00〜翌02:59）
 
-## 👤 使い方
+**活動絵文字**
+- 🐶 犬の活動
+- 🐱 猫の活動
+- 🐾 動物その他
+- 💼 事務
+- 🤝 折衝
+- ✏️ その他
 
-1. https://capin-calendar.pages.dev にアクセス
-2. 「新規アカウントを作成する」からアカウント登録
-3. ログイン後、上部タブで表示するシェルターを選択
-4. 「＋シフト登録」またはカレンダーのセルをクリック
-5. カレンダー・担当動物・日時を選択して登録
-6. 表示モード（月/週/一覧）を切り替えて確認
+#### 場所タブ（画面上部）
+
+「全て」「第１シェルター」「第２シェルター」などのタブで **場所を絞り込み** 表示できます。
+
+---
+
+### 日付の詳細を見る
+
+カレンダーのセル（枠内どこでも）をタップすると、その日の詳細ポップアップが開きます。
+
+**詳細ポップアップの内容**
+- その日のシフト一覧（時間・名前・場所・活動内容）
+- 場所ごと・朝昼夜ごとの参加人数サマリー（🐶犬 🐱猫の内訳含む）
+- 日ごとの一行掲示板（連絡事項など）
+- シフト登録ボタン
+
+> **「全て」で場所を選んでいる場合**：場所ごとの参加人数一覧が表示されます  
+> **特定の場所を選んでいる場合**：朝・昼・夜ごとの犬猫人数グリッドが表示されます
+
+---
+
+### シフトを登録する
+
+1. カレンダーの日付をタップして詳細ポップアップを開く
+2. 「＋シフトを登録」ボタンをタップ
+3. 以下の項目を入力して「登録」
+
+| 項目 | 説明 |
+|------|------|
+| **日付** | 活動する日 |
+| **場所** | どのシェルターか（第１・第２・パル動物病院・その他） |
+| **活動内容** | 🐶犬 / 🐱猫 / 🐾動物その他 / 💼事務 / 🤝折衝 / ✏️その他 |
+| **開始時刻・終了時刻** | 活動時間（任意） |
+| **メモ** | 任意のコメント |
+
+> 同じ日に複数のシフトを登録することができます
+
+---
+
+### 自分のシフトを編集・削除する
+
+1. カレンダーで自分のシフト行をタップ、または詳細ポップアップから自分のシフトをタップ
+2. 詳細モーダルの「編集」または「削除」ボタンを使う
+
+> 自分のシフトのみ編集・削除できます（管理者はすべてのシフトを操作可能）
+
+---
+
+### 一行掲示板を書く
+
+各日の詳細ポップアップ内に **一行掲示板** 欄があります。
+
+- ログインしていれば誰でも書き込み・更新できます
+- 「最終更新：◯◯ さん」が表示されます
+- **Ctrl + Enter**（スマホは送信ボタン）で保存
+
+カレンダー上にもピン 📌 アイコンで掲示板の内容が表示されます。
+
+---
+
+## 🛡️ 管理者向け機能
+
+管理者アカウントでログインすると追加機能が使えます。
+
+### 管理者パネル（🛡️アイコン）
+
+- **ユーザー一覧の確認**：登録済みの全ユーザーと権限を確認
+- **権限の変更**：メールアドレスを入力して管理者 ↔ ボランティアの権限変更
+
+### 管理者専用のシフト機能
+
+- **代理登録**：「名前を指定して登録」欄に別のボランティアの名前を入れると代理登録できます
+- **全シフトの編集・削除**：他のボランティアのシフトも編集・削除可能
+- **ステータス変更**：シフトを「承認済み」「却下」に変更できます（一般は「登録済み」のみ）
+
+---
+
+## 🏗️ システム構成
+
+```
+CAPINカレンダー
+├── フロントエンド  Vanilla JS + Tailwind CSS（CDN）
+├── バックエンド    Hono フレームワーク（TypeScript）
+├── データベース    Cloudflare D1（SQLite）
+└── ホスティング   Cloudflare Pages / Workers
+```
+
+### APIエンドポイント一覧
+
+| メソッド | パス | 説明 | 認証 |
+|----------|------|------|------|
+| GET | `/api/health` | ヘルスチェック | 不要 |
+| POST | `/api/auth/register` | 新規ユーザー登録 | 不要 |
+| POST | `/api/auth/login` | ログイン・JWT発行 | 不要 |
+| GET | `/api/calendars` | 場所一覧取得 | 不要 |
+| GET | `/api/shifts` | シフト一覧取得（年月・場所フィルター） | 任意 |
+| POST | `/api/shifts` | シフト登録 | 要ログイン |
+| PUT | `/api/shifts/:id` | シフト更新 | 要ログイン（本人or管理者） |
+| DELETE | `/api/shifts/:id` | シフト削除 | 要ログイン（本人or管理者） |
+| GET | `/api/day-notes` | 掲示板取得（年月指定） | 任意 |
+| PUT | `/api/day-notes/:date` | 掲示板更新 | 要ログイン |
+| GET | `/api/users` | ユーザー一覧 | 管理者のみ |
+| PUT | `/api/users/:id/role` | 権限変更 | 管理者のみ |
+| POST | `/api/users/promote-by-email` | メールで権限変更 | 管理者のみ |
+
+---
+
+## 🗄️ データベース構成（Cloudflare D1）
+
+### テーブル一覧
+
+#### `users` — ユーザー
+| カラム | 型 | 説明 |
+|--------|----|------|
+| id | INTEGER | 主キー |
+| name | TEXT | 表示名 |
+| email | TEXT | メールアドレス（一意） |
+| password_hash | TEXT | ハッシュ化パスワード |
+| role | TEXT | `admin` or `volunteer` |
+
+#### `calendars` — 場所（シェルター種別）
+| カラム | 型 | 説明 |
+|--------|----|------|
+| id | INTEGER | 主キー |
+| slug | TEXT | 識別子（例: `shelter1`） |
+| name | TEXT | 表示名（例: `第１シェルター`） |
+| color | TEXT | カレンダーカラー（HEX） |
+
+**初期データ**
+- 第１シェルター（`shelter1`）🔵
+- 第２シェルター（`shelter2`）🟢
+- パル動物病院（`animal_hospital`）🟠
+
+#### `shifts` — シフト登録
+| カラム | 型 | 説明 |
+|--------|----|------|
+| id | INTEGER | 主キー |
+| user_id | INTEGER | 登録ユーザー |
+| calendar_id | INTEGER | 場所（カレンダー） |
+| shift_date | TEXT | 活動日（YYYY-MM-DD） |
+| start_time | TEXT | 開始時刻（HH:MM） |
+| end_time | TEXT | 終了時刻（HH:MM） |
+| activity_type | TEXT | 活動種別（`dog` / `cat` / `other_animal` / `office` / `negotiation` / `other_custom`） |
+| activity_custom | TEXT | 活動種別「その他」時の任意テキスト |
+| location_type | TEXT | 場所種別（カレンダーslug or `other_location`） |
+| location_custom | TEXT | 場所「その他」時の任意テキスト |
+| status | TEXT | `pending`（登録済み）/ `approved`（承認済み）/ `rejected`（却下） |
+| note | TEXT | メモ |
+
+#### `day_notes` — 一行掲示板
+| カラム | 型 | 説明 |
+|--------|----|------|
+| note_date | TEXT | 対象日（YYYY-MM-DD、一意） |
+| content | TEXT | 掲示板の内容 |
+| updated_by_name | TEXT | 最終更新者の名前 |
+
+---
+
+## 🚀 開発者向け — セットアップ
+
+### 必要なもの
+- Node.js 18+
+- Cloudflare アカウント
+- Wrangler CLI
+
+### ローカル開発
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/<YOUR_REPO>/capin-calendar.git
+cd capin-calendar
+
+# 依存関係インストール
+npm install
+
+# DBマイグレーション（ローカル）
+npm run db:migrate:local
+
+# 開発サーバー起動（ポート3000）
+npm run build
+npx wrangler pages dev dist --d1=capin-calendar-production --local --ip 0.0.0.0 --port 3000
+```
+
+### 本番デプロイ
+
+```bash
+# D1データベース作成（初回のみ）
+npx wrangler d1 create capin-calendar-production
+
+# wrangler.jsonc の database_id を更新後、マイグレーション適用
+npm run db:migrate:prod
+
+# ビルド＆デプロイ
+npm run build
+npx wrangler pages deploy dist --project-name capin-calendar
+```
+
+### 環境変数（Cloudflare Secrets）
+
+```bash
+# JWTシークレットを設定（必須）
+npx wrangler pages secret put JWT_SECRET --project-name capin-calendar
+```
+
+### npm スクリプト
+
+| コマンド | 説明 |
+|----------|------|
+| `npm run build` | Viteでビルド（`dist/`に出力） |
+| `npm run db:migrate:local` | ローカルDBにマイグレーション適用 |
+| `npm run db:migrate:prod` | 本番DBにマイグレーション適用 |
+| `npm run db:seed` | テストデータ投入 |
+| `npm run db:reset` | ローカルDBリセット＋再マイグレーション |
+
+---
+
+## 📋 現在実装済みの機能
+
+- [x] ユーザー登録・ログイン（JWT認証）
+- [x] ゲスト閲覧モード（ログイン不要）
+- [x] 月表示カレンダー（当日・翌日セルを大きく表示）
+- [x] 週表示カレンダー（2週表示、＜＞で1週ずつ移動）
+- [x] 一覧表示
+- [x] 「今日」ボタン → 当日詳細ポップアップを即表示
+- [x] 時間帯（朝🌅 / 昼☀️ / 夜🌙）ごとのシフト表示
+- [x] 場所別登録人数をセル最下部に表示
+- [x] シフト登録・編集・削除
+- [x] 活動種別（犬・猫・動物その他・事務・折衝・その他）
+- [x] 場所指定（シェルター・その他自由入力）
+- [x] 日ごとの一行掲示板
+- [x] 日付詳細ポップアップ（人数サマリー・場所別集計）
+- [x] 管理者パネル（ユーザー管理・権限変更）
+- [x] 管理者による代理シフト登録
+- [x] シフトのステータス管理（登録済み/承認済み/却下）
+- [x] スマートフォン対応（モバイルファースト設計）
+
+## 🔧 今後の改善候補
+
+- [ ] シフト登録時のメール通知
+- [ ] シフトの一括エクスポート（CSV）
+- [ ] 月次集計レポート画面
+- [ ] プッシュ通知対応
+
+---
+
+## 🛠️ 技術スタック
+
+| カテゴリ | 技術 |
+|----------|------|
+| バックエンド | [Hono](https://hono.dev/) v4 (TypeScript) |
+| フロントエンド | Vanilla JS + [Tailwind CSS](https://tailwindcss.com/) (CDN) |
+| アイコン | [Font Awesome](https://fontawesome.com/) 6.4 (CDN) |
+| データベース | [Cloudflare D1](https://developers.cloudflare.com/d1/) (SQLite) |
+| ホスティング | [Cloudflare Pages](https://pages.cloudflare.com/) |
+| ビルドツール | [Vite](https://vitejs.dev/) v6 |
+| 認証 | JWT（Web Crypto API） |
+
+---
+
+*最終更新: 2026-02-25*
