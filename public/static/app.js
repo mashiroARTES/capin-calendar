@@ -581,16 +581,57 @@ function getSosBadgesForDate(dateStr) {
   return (State.sosBadges || []).filter(b => b.badge_date === dateStr);
 }
 
+// urgency ごとのスタイル定義
+const SOS_URGENCY = {
+  normal: {
+    label:     '募集',
+    icon:      '🟡',
+    chipBg:    '#fffbeb',
+    chipBorder:'#fcd34d',
+    chipColor: '#92400e',
+    blockBg:   '#fffbeb',
+    blockBorder:'#fcd34d',
+    titleColor:'#92400e',
+    itemBorder:'#fde68a',
+    badgeBg:   '#fef9c3',
+    badgeBorder:'#fde047',
+    badgeColor:'#713f12',
+  },
+  urgent: {
+    label:     '緊急募集',
+    icon:      '🔴',
+    chipBg:    '#fef2f2',
+    chipBorder:'#fca5a5',
+    chipColor: '#dc2626',
+    blockBg:   '#fef2f2',
+    blockBorder:'#f87171',
+    titleColor:'#dc2626',
+    itemBorder:'#fca5a5',
+    badgeBg:   '#fee2e2',
+    badgeBorder:'#f87171',
+    badgeColor:'#991b1b',
+  },
+};
+function getSosStyle(urgency) {
+  return SOS_URGENCY[urgency] || SOS_URGENCY.normal;
+}
+
 // SOSバッジの表示HTML（コンパクト版 - カレンダーセル内用）
 function sosBadgeChipHtml(badge) {
-  const at = ACTIVITY_TYPES[badge.activity_type] || ACTIVITY_TYPES.other_animal;
-  const color = badge.calendar_color || '#9ca3af';
-  const title = escHtml(badge.calendar_name || '') + ' ' + escHtml(at.label) + (badge.message ? '：' + escHtml(badge.message) : '');
-  return '<span title="' + title + '" style="display:inline-flex;align-items:center;gap:2px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:4px;padding:1px 4px;font-size:9px;font-weight:800;color:#dc2626;white-space:nowrap;cursor:default">'
-    + '<span style="font-size:10px">🆘</span>'
-    + '<span style="color:' + color + ';font-size:8px">●</span>'
+  const at  = ACTIVITY_TYPES[badge.activity_type] || ACTIVITY_TYPES.other_animal;
+  const st  = getSosStyle(badge.urgency);
+  const cal = badge.calendar_color || '#9ca3af';
+  const titleTxt = escHtml(badge.calendar_name||'') + ' ' + escHtml(at.label)
+    + (badge.message ? '：' + escHtml(badge.message) : '');
+  return '<span title="' + st.label + '｜' + titleTxt + '"'
+    + ' style="display:inline-flex;align-items:center;gap:2px;'
+    + 'background:' + st.chipBg + ';border:1.5px solid ' + st.chipBorder + ';'
+    + 'border-radius:4px;padding:1px 4px;font-size:9px;font-weight:800;color:' + st.chipColor + ';white-space:nowrap;cursor:default">'
+    + '<span style="font-size:10px">' + st.icon + '</span>'
+    + '<span style="color:' + cal + ';font-size:8px">●</span>'
     + escHtml(at.emoji) + ' '
     + escHtml((badge.calendar_name||'').slice(0,3))
+    + '<span style="margin-left:2px;font-size:8px">' + st.label + '</span>'
     + '</span>';
 }
 
@@ -832,22 +873,37 @@ function buildQuickDetail(selDate, map) {
     : '';
 
   // SOS バッジ（その日の人手不足マーク）
-  const sosBadges = getSosBadgesForDate(sd);
-  const sosHtml = sosBadges.length
-    ? '<div style="margin:4px 10px 2px;padding:6px 10px;background:#fef2f2;border-radius:8px;border-left:3px solid #f87171">'
-      + '<div style="font-size:11px;font-weight:800;color:#dc2626;margin-bottom:4px"><span style="font-size:13px">🆘</span> 人手不足アラート</div>'
-      + '<div style="display:flex;flex-wrap:wrap;gap:4px">'
-      + sosBadges.map(function(b) {
-          const at = ACTIVITY_TYPES[b.activity_type] || ACTIVITY_TYPES.other_animal;
-          return '<div style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;padding:3px 8px">'
-            + '<span style="color:' + (b.calendar_color||'#9ca3af') + ';font-size:10px">●</span>'
-            + '<span style="font-size:12px">' + at.emoji + '</span>'
-            + '<span style="font-size:12px;font-weight:700;color:#1f2937">' + escHtml(b.calendar_name||'') + '</span>'
-            + '<span style="font-size:11px;font-weight:600;color:#dc2626">' + escHtml(at.label.replace(/^[^\s]+\s/,'')) + '</span>'
-            + (b.message ? '<span style="font-size:10px;color:#6b7280">(' + escHtml(b.message) + ')</span>' : '')
+  // urgent を先に、normal を後に並べる
+  const sosBadgesRaw = getSosBadgesForDate(sd);
+  const sosBadgesSorted = sosBadgesRaw.slice().sort(function(a,b){
+    return (a.urgency==='urgent'?0:1) - (b.urgency==='urgent'?0:1);
+  });
+  const sosHtml = sosBadgesSorted.length
+    ? (function() {
+        // urgency ごとにグループ化して別ブロックで表示
+        var groups = { urgent: [], normal: [] };
+        sosBadgesSorted.forEach(function(b) {
+          (groups[b.urgency] || groups.normal).push(b);
+        });
+        return ['urgent','normal'].filter(function(u){ return groups[u].length; }).map(function(u) {
+          var st = getSosStyle(u);
+          var items = groups[u].map(function(b) {
+            var at = ACTIVITY_TYPES[b.activity_type] || ACTIVITY_TYPES.other_animal;
+            return '<div style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid ' + st.itemBorder + ';border-radius:8px;padding:3px 8px">'
+              + '<span style="color:' + (b.calendar_color||'#9ca3af') + ';font-size:10px">●</span>'
+              + '<span style="font-size:12px">' + at.emoji + '</span>'
+              + '<span style="font-size:12px;font-weight:700;color:#1f2937">' + escHtml(b.calendar_name||'') + '</span>'
+              + '<span style="font-size:11px;font-weight:600;color:' + st.titleColor + '">' + escHtml(at.label.replace(/^[^\s]+\s/,'')) + '</span>'
+              + (b.message ? '<span style="font-size:10px;color:#6b7280">(' + escHtml(b.message) + ')</span>' : '')
+              + '</div>';
+          }).join('');
+          return '<div style="margin:4px 10px 2px;padding:6px 10px;background:' + st.blockBg + ';border-radius:8px;border-left:3px solid ' + st.blockBorder + '">'
+            + '<div style="font-size:11px;font-weight:800;color:' + st.titleColor + ';margin-bottom:4px">'
+            + '<span style="font-size:13px">' + st.icon + '</span> ' + st.label + '</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:4px">' + items + '</div>'
             + '</div>';
-        }).join('')
-      + '</div></div>'
+        }).join('');
+      })()
     : '';
 
   return '<div>'
@@ -1930,19 +1986,33 @@ async function openAdminModal() {
   + '<h4 class="text-sm font-semibold text-red-700 mb-3"><span class="text-base">🆘</span> 人手不足SOSマーク設定</h4>'
   + '<div class="grid grid-cols-1 gap-2">'
   + '<div class="flex gap-2 items-center">'
-  + '<label class="text-xs text-gray-600 w-10 flex-shrink-0">日付</label>'
+  + '<label class="text-xs text-gray-600 w-12 flex-shrink-0">日付</label>'
   + '<input type="date" id="sos-date" value="' + todayStr + '" class="flex-1 border border-red-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300">'
   + '</div>'
   + '<div class="flex gap-2 items-center">'
-  + '<label class="text-xs text-gray-600 w-10 flex-shrink-0">場所</label>'
+  + '<label class="text-xs text-gray-600 w-12 flex-shrink-0">場所</label>'
   + '<select id="sos-calendar" class="flex-1 border border-red-200 rounded-lg px-3 py-1.5 text-sm">' + calOptions + '</select>'
   + '</div>'
   + '<div class="flex gap-2 items-center">'
-  + '<label class="text-xs text-gray-600 w-10 flex-shrink-0">活動</label>'
+  + '<label class="text-xs text-gray-600 w-12 flex-shrink-0">活動</label>'
   + '<select id="sos-activity" class="flex-1 border border-red-200 rounded-lg px-3 py-1.5 text-sm">' + actOptions + '</select>'
   + '</div>'
+  // 重要度ラジオボタン
   + '<div class="flex gap-2 items-center">'
-  + '<label class="text-xs text-gray-600 w-10 flex-shrink-0">コメント</label>'
+  + '<label class="text-xs text-gray-600 w-12 flex-shrink-0">重要度</label>'
+  + '<div class="flex gap-3">'
+  + '<label class="flex items-center gap-1.5 cursor-pointer">'
+  + '<input type="radio" name="sos-urgency" id="sos-urgency-normal" value="normal" checked class="accent-yellow-500">'
+  + '<span class="text-sm">🟡</span><span class="text-xs font-semibold text-yellow-700">募集</span>'
+  + '</label>'
+  + '<label class="flex items-center gap-1.5 cursor-pointer">'
+  + '<input type="radio" name="sos-urgency" id="sos-urgency-urgent" value="urgent" class="accent-red-500">'
+  + '<span class="text-sm">🔴</span><span class="text-xs font-semibold text-red-700">緊急募集</span>'
+  + '</label>'
+  + '</div>'
+  + '</div>'
+  + '<div class="flex gap-2 items-center">'
+  + '<label class="text-xs text-gray-600 w-12 flex-shrink-0">コメント</label>'
   + '<input type="text" id="sos-message" maxlength="50" placeholder="例：あと2名必要（任意）" class="flex-1 border border-red-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300">'
   + '</div>'
   + '</div>'
@@ -2001,11 +2071,15 @@ async function loadAdminSosList() {
   }
   el.innerHTML = badges.map(function(b) {
     const at = ACTIVITY_TYPES[b.activity_type] || ACTIVITY_TYPES.other_animal;
-    return '<div class="flex items-center gap-2 bg-white border border-red-100 rounded-lg px-3 py-2">'
-      + '<span class="text-sm">🆘</span>'
+    const st = getSosStyle(b.urgency);
+    return '<div class="flex items-center gap-2 bg-white rounded-lg px-3 py-2" style="border:1.5px solid ' + st.itemBorder + '">'
+      + '<span class="text-sm">' + st.icon + '</span>'
       + '<span class="w-2 h-2 rounded-full flex-shrink-0" style="background:' + (b.calendar_color||'#9ca3af') + '"></span>'
       + '<div class="flex-1 min-w-0">'
-      + '<div class="text-xs font-bold text-gray-800">' + escHtml(b.badge_date) + ' ' + escHtml(b.calendar_name||'') + ' ' + at.emoji + ' ' + escHtml(at.label.replace(/^[^ ]+ /,'')) + '</div>'
+      + '<div class="flex items-center gap-1.5">'
+      + '<span class="text-xs font-bold" style="color:' + st.titleColor + '">' + st.label + '</span>'
+      + '<span class="text-xs font-bold text-gray-800">' + escHtml(b.badge_date) + ' ' + escHtml(b.calendar_name||'') + ' ' + at.emoji + ' ' + escHtml(at.label.replace(/^[^ ]+ /,'')) + '</span>'
+      + '</div>'
       + (b.message ? '<div class="text-xs text-gray-500">' + escHtml(b.message) + '</div>' : '')
       + '</div>'
       + '<button onclick="adminDeleteSos(' + b.id + ')" class="text-red-400 hover:text-red-600 text-xs p-1" title="削除"><i class="fas fa-trash"></i></button>'
@@ -2020,12 +2094,14 @@ async function adminAddSos() {
   const actEl  = document.getElementById('sos-activity');
   const msgEl  = document.getElementById('sos-message');
   if (!dateEl || !calEl || !actEl) return;
+  const urgencyEl    = document.querySelector('input[name="sos-urgency"]:checked');
   const badge_date   = dateEl.value;
   const calendar_id  = parseInt(calEl.value);
   const activity_type = actEl.value;
+  const urgency       = urgencyEl ? urgencyEl.value : 'normal';
   const message       = msgEl ? msgEl.value.trim() : '';
   if (!badge_date) { showAdminMsg('日付を入力してください', 'error'); return; }
-  const r = await API.post('/sos-badges', { badge_date, calendar_id, activity_type, message });
+  const r = await API.post('/sos-badges', { badge_date, calendar_id, activity_type, urgency, message });
   if (r.ok) {
     showAdminMsg('SOSマークを設定しました', 'success');
     // State も更新

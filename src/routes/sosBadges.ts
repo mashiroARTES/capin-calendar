@@ -17,7 +17,7 @@ sosBadges.get('/', optionalAuthMiddleware, async (c) => {
     let query = `
       SELECT
         s.id, s.badge_date, s.calendar_id, s.activity_type,
-        s.message, s.created_by, s.created_at,
+        s.urgency, s.message, s.created_by, s.created_at,
         c.name  AS calendar_name,
         c.color AS calendar_color,
         c.slug  AS calendar_slug
@@ -54,7 +54,7 @@ sosBadges.get('/', optionalAuthMiddleware, async (c) => {
 sosBadges.post('/', authMiddleware, adminMiddleware, async (c) => {
   try {
     const userId = c.get('userId');
-    const { badge_date, calendar_id, activity_type, message } = await c.req.json();
+    const { badge_date, calendar_id, activity_type, urgency, message } = await c.req.json();
 
     // バリデーション
     if (!badge_date || !/^\d{4}-\d{2}-\d{2}$/.test(badge_date)) {
@@ -67,22 +67,23 @@ sosBadges.post('/', authMiddleware, adminMiddleware, async (c) => {
     if (!activity_type || !validActivities.includes(activity_type)) {
       return c.json({ error: '活動内容が正しくありません' }, 400);
     }
-
+    const safeUrgency = (urgency === 'urgent') ? 'urgent' : 'normal';
     const safeMsg = (message || '').slice(0, 100);
 
     // UPSERT（同一の日・場所・活動があれば上書き）
     await c.env.DB.prepare(`
-      INSERT INTO sos_badges (badge_date, calendar_id, activity_type, message, created_by)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO sos_badges (badge_date, calendar_id, activity_type, urgency, message, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(badge_date, calendar_id, activity_type) DO UPDATE SET
+        urgency    = excluded.urgency,
         message    = excluded.message,
         created_by = excluded.created_by,
         created_at = CURRENT_TIMESTAMP
-    `).bind(badge_date, calendar_id, activity_type, safeMsg, userId).run();
+    `).bind(badge_date, calendar_id, activity_type, safeUrgency, safeMsg, userId).run();
 
     // 作成したレコードを返す（カレンダー情報付き）
     const created = await c.env.DB.prepare(`
-      SELECT s.id, s.badge_date, s.calendar_id, s.activity_type, s.message,
+      SELECT s.id, s.badge_date, s.calendar_id, s.activity_type, s.urgency, s.message,
              c.name AS calendar_name, c.color AS calendar_color, c.slug AS calendar_slug
       FROM sos_badges s
       JOIN calendars c ON s.calendar_id = c.id
