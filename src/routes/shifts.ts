@@ -85,7 +85,7 @@ shifts.post('/', authMiddleware, async (c) => {
     }
     
     // 活動内容バリデーション
-    const validActivityTypes = ['dog', 'cat', 'other_animal', 'office', 'negotiation', 'other_custom'];
+    const validActivityTypes = ['dog', 'cat', 'other_animal', 'office', 'negotiation', 'supplies', 'transport', 'rescue', 'capture', 'other_custom'];
     const activityTypeValue = activity_type && validActivityTypes.includes(activity_type) ? activity_type : 'dog';
     const activityCustomValue = activityTypeValue === 'other_custom' ? (activity_custom || null) : null;
 
@@ -183,7 +183,7 @@ shifts.put('/:id', authMiddleware, async (c) => {
     } = await c.req.json();
     
     // 活動内容バリデーション
-    const validActivityTypes = ['dog', 'cat', 'other_animal', 'office', 'negotiation', 'other_custom'];
+    const validActivityTypes = ['dog', 'cat', 'other_animal', 'office', 'negotiation', 'supplies', 'transport', 'rescue', 'capture', 'other_custom'];
     const newActivityType = activity_type && validActivityTypes.includes(activity_type) ? activity_type : undefined;
     const newActivityCustom = newActivityType === 'other_custom' ? (activity_custom || null) : null;
 

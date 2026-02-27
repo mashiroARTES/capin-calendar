@@ -4,12 +4,16 @@
 
 // 活動内容（旧担当動物を拡張）
 const ACTIVITY_TYPES = {
-  dog:          { label: '🐶 犬',    emoji: '🐶', color: '#3b82f6', bg: '#eff6ff' },
-  cat:          { label: '🐱 猫',    emoji: '🐱', color: '#ec4899', bg: '#fdf2f8' },
-  other_animal: { label: '🐾 動物その他', emoji: '🐾', color: '#8b5cf6', bg: '#f5f3ff' },
-  office:       { label: '💼 事務',   emoji: '💼', color: '#f59e0b', bg: '#fffbeb' },
-  negotiation:  { label: '🤝 折衝',   emoji: '🤝', color: '#10b981', bg: '#ecfdf5' },
-  other_custom: { label: '✏️ その他', emoji: '✏️', color: '#6b7280', bg: '#f3f4f6' },
+  dog:          { label: '🐶 犬',         emoji: '🐶', color: '#3b82f6', bg: '#eff6ff' },
+  cat:          { label: '🐱 猫',         emoji: '🐱', color: '#ec4899', bg: '#fdf2f8' },
+  other_animal: { label: '🐾 動物その他',  emoji: '🐾', color: '#8b5cf6', bg: '#f5f3ff' },
+  office:       { label: '💼 事務',        emoji: '💼', color: '#f59e0b', bg: '#fffbeb' },
+  negotiation:  { label: '🤝 折衝',        emoji: '🤝', color: '#10b981', bg: '#ecfdf5' },
+  supplies:     { label: '📦 支援物資',    emoji: '📦', color: '#0ea5e9', bg: '#f0f9ff' },
+  transport:    { label: '🚗 病院搬送',    emoji: '🚗', color: '#f97316', bg: '#fff7ed' },
+  rescue:       { label: '🏠 センター引き出し', emoji: '🏠', color: '#84cc16', bg: '#f7fee7' },
+  capture:      { label: '🪤 捕獲',        emoji: '🪤', color: '#a855f7', bg: '#faf5ff' },
+  other_custom: { label: '✏️ その他',      emoji: '✏️', color: '#6b7280', bg: '#f3f4f6' },
 };
 // 後方互換
 const ANIMAL_TYPES = ACTIVITY_TYPES;
