@@ -806,11 +806,39 @@ function buildQuickDetail(selDate, map) {
     key2[k].count++;
   });
   const summaryHtml = Object.values(key2).length
-    ? `<div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px 4px">` +
-      Object.values(key2).map(({short,al,color,count}) =>
-        `<span style="display:inline-flex;align-items:center;gap:2px;background:#f3f4f6;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700;color:#374151">` +
-        `<span style="color:${color};font-size:10px">●</span>${escHtml(short)}${escHtml(al)}<span style="color:#3b82f6;margin-left:1px">${count}</span></span>`
-      ).join('') + `</div>`
+    ? '<div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px 4px">' +
+      Object.values(key2).map(function({short,al,color,count}) {
+        return '<span style="display:inline-flex;align-items:center;gap:2px;background:#f3f4f6;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700;color:#374151">'
+          + '<span style="color:'+color+';font-size:10px">●</span>'+escHtml(short)+escHtml(al)+'<span style="color:#3b82f6;margin-left:1px">'+count+'</span></span>';
+      }).join('') + '</div>'
+    : '';
+
+  // 時間帯別人数バッジ（朝/昼/夜 × 合計人数）
+  const slotCountDef = [
+    {key:'morning',  label:'朝', hc:'#d97706', bg:'#fffbeb', bc:'#fde68a'},
+    {key:'afternoon',label:'昼', hc:'#059669', bg:'#ecfdf5', bc:'#a7f3d0'},
+    {key:'night',    label:'夜', hc:'#4f46e5', bg:'#eef2ff', bc:'#c7d2fe'},
+  ];
+  const slotGetFn = t => {
+    if (!t) return 'night';
+    const h = parseInt(t.slice(0,2),10);
+    if (h>=3&&h<12) return 'morning';
+    if (h>=12&&h<17) return 'afternoon';
+    return 'night';
+  };
+  const slotCountMap = {morning:0, afternoon:0, night:0};
+  dayShifts.forEach(s => { slotCountMap[slotGetFn(s.start_time)]++; });
+  const slotCountHtml = slotCountDef.some(({key}) => slotCountMap[key] > 0)
+    ? '<div style="display:flex;gap:4px;padding:2px 10px 6px">'
+      + slotCountDef.map(function({key,label,hc,bg,bc}) {
+          const n = slotCountMap[key];
+          if (!n) return '';
+          return '<span style="display:inline-flex;align-items:center;gap:3px;background:'+bg+';border:1.5px solid '+bc+';border-radius:6px;padding:2px 7px;font-size:12px;font-weight:700">'
+            + '<span style="color:'+hc+';font-size:11px;font-weight:800">'+label+'</span>'
+            + '<span style="color:#1f2937">'+n+'</span>'
+            + '</span>';
+        }).join('')
+      + '</div>'
     : '';
 
   // メモ表示（3行まで）
@@ -918,6 +946,7 @@ function buildQuickDetail(selDate, map) {
     + sosHtml
     + noteHtml
     + summaryHtml
+    + slotCountHtml
     + slotsHtml
     + emptyHtml
     + addBtn
