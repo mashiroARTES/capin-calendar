@@ -366,8 +366,9 @@ const State = {
   currentCalendarSlug: null,
   currentYear:  new Date().getFullYear(),
   currentMonth: new Date().getMonth() + 1,
-  viewMode: 'month',   // 'month' | 'week' | 'list'
+  viewMode: 'quick',   // 'quick' | 'month' | 'week' | 'list'
   weekOffset: 0,       // 週ビュー用：当日含む週から何週ずらすか
+  selectedDate: new Date().toISOString().split('T')[0], // クイックビュー選択日
   loading: false,
 };
 
@@ -673,6 +674,9 @@ function renderShell() {
           </button>
         </div>
         <div class="flex items-center gap-1">
+          <button id="view-quick" onclick="setViewMode('quick')" class="view-btn \${State.viewMode==='quick'?'active':''}">
+            <i class="fas fa-bolt mr-1 text-xs"></i>クイック
+          </button>
           <button id="view-month" onclick="setViewMode('month')" class="view-btn \${State.viewMode==='month'?'active':''}">
             <i class="fas fa-th mr-1 text-xs"></i>月
           </button>
@@ -747,14 +751,14 @@ function getWeekViewRange() {
 }
 
 function updateViewBtns() {
-  ['month','week','list'].forEach(m => {
+  ['quick','month','week','list'].forEach(m => {
     const el = document.getElementById('view-' + m);
     if (el) el.classList.toggle('active', m === State.viewMode);
   });
 }
 
 // ============================================================
-// コンテンツ描画（月・週・一覧）
+// コンテンツ描画（クイック・月・週・一覧）
 // ============================================================
 function renderContent() {
   const el = document.getElementById('cal-content');
@@ -764,7 +768,8 @@ function renderContent() {
     el.innerHTML = \`<div class="flex items-center justify-center h-full"><div class="spinner"></div></div>\`;
     return;
   }
-  if (State.viewMode === 'month') el.innerHTML = renderMonthView();
+  if (State.viewMode === 'quick') el.innerHTML = renderQuickView();
+  else if (State.viewMode === 'month') el.innerHTML = renderMonthView();
   else if (State.viewMode === 'week') el.innerHTML = renderWeekView();
   else el.innerHTML = renderListView();
 }
@@ -886,28 +891,228 @@ function getLocationLabel(s) {
   return s.calendar_name || '';
 }
 
-// 場所別登録人数バッジHTML（セル最下部用）
+// 場所×活動内容別登録人数バッジHTML（セル最下部用）
+// 例: ●第1猫3 ●第1犬4 ●第2猫2
 function locationCountHtml(shifts) {
   if (!shifts || shifts.length === 0) return '';
-  // 場所ごとにカウント（表示名 → {count, color}）
-  const locMap = {};
+  // 活動種別の短縮名（犬・猫のみ表示、他は「他」でまとめ）
+  const actLabel = t => {
+    if (t === 'dog') return '犬';
+    if (t === 'cat') return '猫';
+    return null; // 犬・猫以外は除外
+  };
+  // 場所名の短縮（最大4文字）
+  const shortLoc = label => {
+    // 「第１シェルター」→「第1」、「パル動物病院」→「パル」など
+    const m = label.match(/第(\d+|[１２３４５６７８９０]+)/);
+    if (m) return '第' + m[1].replace(/[１２３４５６７８９０]/g, c => '０１２３４５６７８９'.indexOf(c));
+    return label.slice(0, 3);
+  };
+  // 場所×活動 ごとにカウント
+  const key2 = {};
   shifts.forEach(s => {
-    const label = getLocationLabel(s) || '未設定';
+    const aType = s.activity_type || s.animal_type || '';
+    const al = actLabel(aType);
+    if (!al) return; // 犬・猫以外はスキップ
+    const loc = getLocationLabel(s) || '未設定';
     const color = s.calendar_color || '#9ca3af';
-    if (!locMap[label]) locMap[label] = { count: 0, color };
-    locMap[label].count++;
+    const k = loc + '__' + al;
+    if (!key2[k]) key2[k] = { short: shortLoc(loc), al, color, count: 0 };
+    key2[k].count++;
   });
-  const entries = Object.entries(locMap);
+  const entries = Object.values(key2);
   if (entries.length === 0) return '';
-  // 各場所を「●場所名 N」の形でコンパクトに横並び
-  const items = entries.map(([label, {count, color}]) =>
-    \`<span style="display:inline-flex;align-items:center;gap:1px;white-space:nowrap;font-size:7px;line-height:1.3">
-      <span style="color:\${color};font-size:7px">●</span>
-      <span style="color:#374151;overflow:hidden;text-overflow:ellipsis;max-width:32px;display:inline-block;vertical-align:bottom" title="\${escHtml(label)}">\${escHtml(label)}</span>
-      <span style="color:#6b7280;font-weight:700">\${count}</span>
+  const items = entries.map(({short, al, color, count}) =>
+    \`<span style="display:inline-flex;align-items:center;gap:0px;white-space:nowrap;font-size:7px;line-height:1.4">
+      <span style="color:\${color};font-size:7px">●</span><span style="color:#374151;font-weight:600">\${escHtml(short)}\${escHtml(al)}\${count}</span>
     </span>\`
   ).join('');
-  return \`<div style="margin-top:auto;padding-top:2px;border-top:1px dashed #e5e7eb;display:flex;flex-wrap:wrap;gap:1px 3px;margin-left:1px;margin-right:1px">\${items}</div>\`;
+  return \`<div style="margin-top:auto;padding-top:2px;border-top:1px dashed #e5e7eb;display:flex;flex-wrap:wrap;gap:1px 2px;margin-left:1px;margin-right:1px">\${items}</div>\`;
+}
+
+// ============================================================
+// クイックビュー（上部：ミニカレンダー / 下部：選択日の詳細一覧）
+// ============================================================
+function renderQuickView() {
+  const {currentYear:y, currentMonth:m} = State;
+  const firstDay = new Date(y, m-1, 1).getDay();
+  const lastDate = new Date(y, m, 0).getDate();
+  const today    = new Date().toISOString().split('T')[0];
+  const sel      = State.selectedDate;
+  const DAYS     = ['日','月','火','水','木','金','土'];
+  const DCOL     = ['#ef4444','#374151','#374151','#374151','#374151','#374151','#3b82f6'];
+
+  // シフトを日付でマップ
+  const map = {};
+  State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date]||[]).push(s); });
+
+  // ── ミニカレンダー ──────────────────────────────────────────
+  // 曜日ヘッダー
+  const hdrHtml = DAYS.map((d,i) =>
+    \`<div style="text-align:center;font-size:9px;font-weight:700;color:\${DCOL[i]};padding:1px 0">\${d}</div>\`
+  ).join('');
+
+  // 空白セル
+  let cells = Array(firstDay).fill(null);
+  for (let d = 1; d <= lastDate; d++) {
+    cells.push(d);
+  }
+  // 7の倍数に揃える
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const cellsHtml = cells.map((d, i) => {
+    if (!d) return \`<div style="aspect-ratio:1;min-width:0"></div>\`;
+    const ds  = y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    const isToday = ds === today;
+    const isSel   = ds === sel;
+    const hasSh   = (map[ds]||[]).length > 0;
+    const dotCol  = hasSh ? '#3b82f6' : 'transparent';
+    const bgStyle = isSel
+      ? 'background:#3b82f6;color:white;border-radius:50%'
+      : isToday
+      ? 'background:#fef3c7;border-radius:50%;font-weight:800'
+      : '';
+    return \`<div onclick="selectQuickDate('\${ds}')"
+      style="aspect-ratio:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;padding:1px">
+      <div style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;\${bgStyle}">
+        <span style="font-size:11px;line-height:1;font-weight:\${isToday||isSel?'800':'500'}">\${d}</span>
+      </div>
+      <div style="width:4px;height:4px;border-radius:50%;background:\${isSel?'white':dotCol};margin-top:1px"></div>
+    </div>\`;
+  }).join('');
+
+  const miniCal = \`<div style="padding:4px 6px 2px;background:white;border-bottom:1px solid #e5e7eb">
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0">\${hdrHtml}</div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0">\${cellsHtml}</div>
+  </div>\`;
+
+  // ── 選択日の詳細一覧 ──────────────────────────────────────
+  const selDate   = sel || today;
+  const dayShifts = (map[selDate]||[]).sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
+  const isAdmin   = State.user && State.user.role === 'admin';
+  const isGuest   = State.guestMode || !State.user;
+
+  // 日付ラベル
+  const dObj = new Date(selDate + 'T12:00:00');
+  const dayNames = ['日','月','火','水','木','金','土'];
+  const dateLabel = \`\${dObj.getMonth()+1}月\${dObj.getDate()}日（\${dayNames[dObj.getDay()]}）\`;
+
+  // 場所×活動 別人数サマリー
+  const actLabel = t => t==='dog'?'犬':t==='cat'?'猫':null;
+  const shortLoc = label => {
+    const mm = label.match(/第(\d+|[１２３４５６７８９０]+)/);
+    if (mm) return '第'+mm[1].replace(/[１２３４５６７８９０]/g,c=>'０１２３４５６７８９'.indexOf(c));
+    return label.slice(0,3);
+  };
+  const key2 = {};
+  dayShifts.forEach(s => {
+    const al = actLabel(s.activity_type||s.animal_type||'');
+    if (!al) return;
+    const loc = getLocationLabel(s)||'未設定';
+    const color = s.calendar_color||'#9ca3af';
+    const k = loc+'__'+al;
+    if (!key2[k]) key2[k] = {short:shortLoc(loc),al,color,count:0};
+    key2[k].count++;
+  });
+  const summaryItems = Object.values(key2).map(({short,al,color,count}) =>
+    \`<span style="display:inline-flex;align-items:center;gap:1px;white-space:nowrap;background:#f3f4f6;border-radius:4px;padding:1px 4px;font-size:11px;font-weight:700;color:#374151">
+      <span style="color:\${color};font-size:9px">●</span>\${escHtml(short)}\${escHtml(al)}<span style="color:#3b82f6">\${count}</span>
+    </span>\`
+  ).join('');
+  const summaryHtml = summaryItems
+    ? \`<div style="display:flex;flex-wrap:wrap;gap:3px;padding:4px 8px 4px;border-bottom:1px solid #f0f0f0">\${summaryItems}</div>\`
+    : '';
+
+  // 時間帯ごとに参加者を横並び
+  const SLOTS = [
+    {key:'morning',  label:'朝', hc:'#d97706'},
+    {key:'afternoon',label:'昼', hc:'#059669'},
+    {key:'night',    label:'夜', hc:'#4f46e5'},
+  ];
+  const getSlot = t => {
+    if (!t) return 'night';
+    const h = parseInt(t.slice(0,2),10);
+    if (h>=3&&h<12) return 'morning';
+    if (h>=12&&h<17) return 'afternoon';
+    return 'night';
+  };
+  const slotMap = {morning:[],afternoon:[],night:[]};
+  dayShifts.forEach(s => slotMap[getSlot(s.start_time)].push(s));
+
+  const slotRowsHtml = SLOTS.map(({key,label,hc}) => {
+    const ss = slotMap[key];
+    if (!ss.length) return '';
+    // 参加者を横並びチップ形式
+    const chips = ss.map(s => {
+      const color  = s.calendar_color||'#4f8ef7';
+      const emoji  = getActivityEmoji(s);
+      const isMine = State.user && s.user_id === State.user.id;
+      const safeS  = encodeURIComponent(JSON.stringify(s));
+      return \`<div onclick="event.stopPropagation();showDetail(decodeURIComponent('\${safeS}'))"
+        style="display:inline-flex;align-items:center;gap:3px;background:\${isMine?'#eff6ff':'#f9fafb'};border:1px solid \${isMine?'#bfdbfe':'#e5e7eb'};border-radius:20px;padding:3px 8px;cursor:pointer;white-space:nowrap;flex-shrink:0">
+        <span style="font-size:11px">\${emoji}</span>
+        <span style="font-size:12px;font-weight:\${isMine?'700':'500'};color:\${isMine?'#1d4ed8':'#374151'}">\${escHtml(s.user_name)}</span>
+        \${s.start_time ? \`<span style="font-size:10px;color:#9ca3af">\${s.start_time.slice(0,5)}</span>\` : ''}
+      </div>\`;
+    }).join('');
+    return \`<div style="padding:4px 8px 2px">
+      <div style="font-size:10px;font-weight:800;color:\${hc};margin-bottom:3px">\${label}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">\${chips}</div>
+    </div>\`;
+  }).filter(Boolean).join('');
+
+  // 空のとき
+  const emptyHtml = dayShifts.length === 0
+    ? \`<div style="text-align:center;color:#9ca3af;font-size:13px;padding:24px 0">この日のシフトはありません</div>\`
+    : '';
+
+  // 一行掲示板
+  const note = State.dayNotes[selDate];
+  const noteHtml = note && note.content
+    ? \`<div style="margin:4px 8px;padding:4px 8px;background:#fffbeb;border-radius:6px;font-size:11px;color:#92400e">
+        <i class="fas fa-thumbtack" style="margin-right:4px"></i>\${escHtml(note.content)}
+      </div>\`
+    : '';
+
+  // 登録ボタン
+  const addBtn = !isGuest
+    ? \`<button onclick="openShiftForm('\${selDate}')"
+        style="display:flex;align-items:center;gap:4px;background:#3b82f6;color:white;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;margin:6px 8px">
+        <i class="fas fa-plus"></i>シフトを登録
+      </button>\`
+    : '';
+
+  const detailPanel = \`<div style="background:white;overflow-y:auto;flex:1">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px 2px;border-bottom:1px solid #f0f0f0">
+      <span style="font-size:13px;font-weight:800;color:#1f2937">\${dateLabel}</span>
+      <span style="font-size:11px;color:#9ca3af">\${dayShifts.length}名</span>
+    </div>
+    \${noteHtml}
+    \${summaryHtml}
+    \${slotRowsHtml}
+    \${emptyHtml}
+    \${addBtn}
+  </div>\`;
+
+  return \`<div style="display:flex;flex-direction:column;height:100%">
+    \${miniCal}
+    \${detailPanel}
+  </div>\`;
+}
+
+// クイックビューで日付を選択
+function selectQuickDate(ds) {
+  State.selectedDate = ds;
+  // 月が変わった場合はシフトを再ロード
+  const d = new Date(ds + 'T12:00:00');
+  const ny = d.getFullYear(), nm = d.getMonth()+1;
+  if (ny !== State.currentYear || nm !== State.currentMonth) {
+    State.currentYear = ny; State.currentMonth = nm;
+    updateMonthLabel();
+    App.loadAndRenderShifts();
+  } else {
+    renderContent();
+  }
 }
 
 // ============================================================
@@ -978,13 +1183,9 @@ function renderMonthView() {
     return 'night';
   };
   const SLOTS = [
-    {key:'morning',  mark:'🌅', hc:'#d97706'},
-    {key:'afternoon',mark:'☀️', hc:'#059669'},
-    {key:'night',    mark:'🌙', hc:'#4f46e5'},
-  ];
-
-  // ヘッダー行
-  const headerHtml = DAYS.map((d, ci) =>
+    {key:'morning',  mark:'朝', hc:'#d97706'},
+    {key:'afternoon',mark:'昼', hc:'#059669'},
+    {key:'night',    mark:'夜', hc:'#4f46e5'},((d, ci) =>
     \`<div style="width:\${colWidths[ci].toFixed(2)}%;flex-shrink:0;text-align:center;font-size:11px;font-weight:600;color:\${DAY_COLORS[ci]};padding:3px 0;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;box-sizing:border-box">\${d}</div>\`
   ).join('');
 
@@ -1023,7 +1224,7 @@ function renderMonthView() {
       let badges = '';
       SLOTS.forEach(({key,mark,hc}) => {
         if (!slotMap[key].length) return;
-        badges += \`<div style="font-size:7px;color:\${hc};font-weight:700;line-height:1.3;overflow:hidden;white-space:nowrap">\${mark}</div>\`;
+        badges += \`<div style="font-size:8px;color:\${hc};font-weight:800;line-height:1.4;overflow:hidden;white-space:nowrap;letter-spacing:0.02em">\${mark}</div>\`;
         slotMap[key].forEach(s => {
           const color = s.calendar_color||'#4f8ef7';
           const safeS = encodeURIComponent(JSON.stringify(s));
@@ -1100,9 +1301,9 @@ function renderWeekView() {
     return 'night';
   };
   const SLOTS = [
-    {key:'morning',  mark:'🌅', hc:'#d97706'},
-    {key:'afternoon',mark:'☀️', hc:'#059669'},
-    {key:'night',    mark:'🌙', hc:'#4f46e5'},
+    {key:'morning',  mark:'朝', hc:'#d97706'},
+    {key:'afternoon',mark:'昼', hc:'#059669'},
+    {key:'night',    mark:'夜', hc:'#4f46e5'},
   ];
 
   // 列幅計算（当日/翌日=30%、他=（100-30×n）÷残り列数）
@@ -1161,7 +1362,7 @@ function renderWeekView() {
       let badges = '';
       SLOTS.forEach(({key,mark,hc}) => {
         if (!slotMap[key].length) return;
-        badges += \`<div style="font-size:7px;color:\${hc};font-weight:700;line-height:1.3;white-space:nowrap;overflow:hidden">\${mark}</div>\`;
+        badges += \`<div style="font-size:8px;color:\${hc};font-weight:800;line-height:1.4;white-space:nowrap;overflow:hidden;letter-spacing:0.02em">\${mark}</div>\`;
         slotMap[key].forEach(s => {
           const color = s.calendar_color||'#4f8ef7';
           const safeS = encodeURIComponent(JSON.stringify(s));
@@ -1635,9 +1836,9 @@ function openDayView(dateStr, focusNote = false) {
       return 'night';
     };
     const SLOT_DEF = [
-      { key: 'morning',   icon: '🌅', label: '朝', hc: '#d97706' },
-      { key: 'afternoon', icon: '☀️',  label: '昼', hc: '#059669' },
-      { key: 'night',     icon: '🌙', label: '夜', hc: '#4f46e5' },
+      { key: 'morning',   icon: '朝', label: '朝', hc: '#d97706' },
+      { key: 'afternoon', icon: '昼',  label: '昼', hc: '#059669' },
+      { key: 'night',     icon: '夜', label: '夜', hc: '#4f46e5' },
     ];
 
     let summaryHtml = '';
@@ -2189,7 +2390,21 @@ function goToToday() {
 
 function openTodayDetail() {
   const todayStr = new Date().toISOString().split('T')[0];
-  // 当日が現在ロード済みの月と異なる場合は月を切り替えてから開く
+  if (State.viewMode === 'quick') {
+    // クイックビューなら選択日を今日にするだけ
+    State.selectedDate = todayStr;
+    const now = new Date();
+    const ty = now.getFullYear(), tm = now.getMonth() + 1;
+    if (State.currentYear !== ty || State.currentMonth !== tm) {
+      State.currentYear = ty; State.currentMonth = tm;
+      updateMonthLabel();
+      App.loadAndRenderShifts();
+    } else {
+      renderContent();
+    }
+    return;
+  }
+  // 他ビューなら日付ポップアップを開く
   const now = new Date();
   const ty = now.getFullYear(), tm = now.getMonth() + 1;
   if (State.currentYear !== ty || State.currentMonth !== tm) {
@@ -2206,6 +2421,7 @@ function openTodayDetail() {
 function setViewMode(mode) {
   State.viewMode = mode;
   if (mode === 'week') State.weekOffset = 0;
+  if (mode === 'quick') State.selectedDate = new Date().toISOString().split('T')[0];
   updateViewBtns();
   updateMonthLabel();
   renderContent();
