@@ -88,6 +88,10 @@
 - 🐾 動物その他
 - 💼 事務
 - 🤝 折衝
+- 📦 支援物資
+- 🚗 病院搬送
+- 🏠 センター引き出し
+- 🪤 捕獲
 - ✏️ その他
 
 #### 場所タブ（画面上部）
@@ -119,7 +123,7 @@
 |------|------|
 | **日付** | 活動する日 |
 | **場所** | どのシェルターか（第１・第２・パル動物病院・その他） |
-| **活動内容** | 🐶犬 / 🐱猫 / 🐾動物その他 / 💼事務 / 🤝折衝 / ✏️その他 |
+| **活動内容** | 🐶犬 / 🐱猫 / 🐾動物その他 / 💼事務 / 🤝折衝 / 📦支援物資 / 🚗病院搬送 / 🏠センター引き出し / 🪤捕獲 / ✏️その他 |
 | **開始時刻・終了時刻** | 活動時間（任意） |
 | **メモ** | 任意のコメント |
 
@@ -159,7 +163,8 @@
 |------|------|
 | **日付を選択** | SOSマークをつける日付 |
 | **場所を選択** | 対象のシェルター・場所 |
-| **活動内容を選択** | 🐶犬 / 🐱猫 / 🐾その他 など |
+| **活動内容を選択** | 🐶犬 / 🐱猫 / 🐾その他 / 📦支援物資 / 🚗病院搬送 / 🏠センター引き出し / 🪤捕獲 など |
+| **重要度を選択** | 🟡 募集（デフォルト）/ 🔴 緊急募集 |
 | **コメント（任意）** | 「あと2名必要」など補足メッセージ |
 
 設定されたSOSマークは以下の場所に表示されます：
@@ -226,6 +231,7 @@ CAPINカレンダー
 | `0003_update_shift_fields.sql` | activity_type・location_type 等追加 |
 | `0004_add_day_notes.sql` | day_notes テーブル（ひとこと掲示板） |
 | `0005_add_sos_badges.sql` | sos_badges テーブル（人手不足SOSマーク） |
+| `0006_add_sos_urgency.sql` | sos_badges.urgency カラム追加（募集/緊急募集） |
 
 ### テーブル一覧
 
@@ -260,7 +266,7 @@ CAPINカレンダー
 | shift_date | TEXT | 活動日（YYYY-MM-DD） |
 | start_time | TEXT | 開始時刻（HH:MM） |
 | end_time | TEXT | 終了時刻（HH:MM） |
-| activity_type | TEXT | 活動種別（`dog` / `cat` / `other_animal` / `office` / `negotiation` / `other_custom`） |
+| activity_type | TEXT | 活動種別（`dog` / `cat` / `other_animal` / `office` / `negotiation` / `supplies` / `transport` / `rescue` / `capture` / `other_custom`） |
 | activity_custom | TEXT | 活動種別「その他」時の任意テキスト |
 | location_type | TEXT | 場所種別（カレンダーslug or `other_location`） |
 | location_custom | TEXT | 場所「その他」時の任意テキスト |
@@ -281,6 +287,7 @@ CAPINカレンダー
 | badge_date | TEXT | 対象日（YYYY-MM-DD） |
 | calendar_id | INTEGER | 場所（calendars.id） |
 | activity_type | TEXT | 活動種別（shifts と同じ値） |
+| urgency | TEXT | 重要度（`normal`=🟡募集 / `urgent`=🔴緊急募集、デフォルト: `normal`） |
 | message | TEXT | 補足コメント（最大50文字、任意） |
 | created_by | INTEGER | 設定した管理者のuser_id |
 | UNIQUE | — | (badge_date, calendar_id, activity_type) の組み合わせは一意 |
@@ -369,7 +376,7 @@ npx wrangler pages secret put JWT_SECRET --project-name capin-calendar
 
 ### シフト機能
 - [x] シフト登録・編集・削除
-- [x] 活動種別（犬・猫・動物その他・事務・折衝・その他カスタム）
+- [x] 活動種別（犬・猫・動物その他・事務・折衝・支援物資・病院搬送・センター引き出し・捕獲・その他カスタム）
 - [x] 場所指定（シェルター選択 or 自由入力）
 - [x] 時間帯（朝🌅 / 昼☀️ / 夜🌙）自動分類・色分け表示
 - [x] 場所×活動別の参加人数チップ表示
@@ -381,6 +388,7 @@ npx wrangler pages secret put JWT_SECRET --project-name capin-calendar
 
 ### SOSマーク（人手不足アラート）
 - [x] 管理者が日・場所・活動内容を指定してSOSマークを設定
+- [x] **重要度選択**：🟡 募集 / 🔴 緊急募集（色・アイコンで視覚的に区別）
 - [x] 任意のコメント（「あと2名必要」など）を付記可能
 - [x] クイックビュー詳細パネルへのアラート表示
 - [x] 月ビューセルへの 🆘 コンパクトチップ表示
@@ -418,4 +426,4 @@ npx wrangler pages secret put JWT_SECRET --project-name capin-calendar
 
 ---
 
-*最終更新: 2026-02-27*
+*最終更新: 2026-02-27（活動内容4種追加・SOS重要度対応）*
