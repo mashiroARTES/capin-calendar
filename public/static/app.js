@@ -620,8 +620,10 @@ function renderQuickView() {
   State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date]||[]).push(s); });
 
   // ── ミニカレンダー（画面上部 ~1/3）──────────────────────────
+  // isPC はこの後の miniCal 生成で定義するが、hdrHtml はその前に必要なため先に判定
+  const isPC = window.innerWidth >= 640;
   const hdrHtml = DAYS.map((d,i) =>
-    '<div style="text-align:center;font-size:11px;font-weight:700;color:'+DCOL[i]+';padding:3px 0">'+d+'</div>'
+    '<div style="text-align:center;font-size:' + (isPC ? '11' : '10') + 'px;font-weight:700;color:'+DCOL[i]+';padding:' + (isPC ? '3' : '2') + 'px 0">'+d+'</div>'
   ).join('');
 
   let cells = Array(firstDay).fill(null);
@@ -640,17 +642,19 @@ function renderQuickView() {
     else if (isToday) bg = 'background:#fef3c7;border-radius:50%';
     const fw = (isToday||isSel) ? '800' : '400';
     const dc = isSel ? '#93c5fd' : dotCol;
+    const cellSz = isPC ? '28px' : '22px';
+    const fSz    = isPC ? '13px' : '11px';
+    const dotSz  = isPC ? '5px'  : '4px';
     return '<div onclick="selectQuickDate(\'' + ds + '\')" style="aspect-ratio:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent">'
-      + '<div style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;' + bg + '">'
-      + '<span style="font-size:13px;line-height:1;font-weight:' + fw + '">' + d + '</span>'
+      + '<div style="display:flex;align-items:center;justify-content:center;width:' + cellSz + ';height:' + cellSz + ';' + bg + '">'
+      + '<span style="font-size:' + fSz + ';line-height:1;font-weight:' + fw + '">' + d + '</span>'
       + '</div>'
-      + '<div style="width:5px;height:5px;border-radius:50%;background:' + dc + ';margin-top:1px"></div>'
+      + '<div style="width:' + dotSz + ';height:' + dotSz + ';border-radius:50%;background:' + dc + ';margin-top:1px"></div>'
       + '</div>';
   }).join('');
 
   // ── カレンダー部分（コンパクト固定幅）──────────────────────
-  // PC(>=640px): 左カラム固定、スマホ: 上部に配置
-  const isPC = window.innerWidth >= 640;
+  // PC(>=640px): 左カラム固定、スマホ: 上部に配置（isPC は hdrHtml 生成時に定義済み）
 
   const miniCal =
     '<div id="quick-cal" style="'
@@ -658,13 +662,13 @@ function renderQuickView() {
         ? 'width:260px;min-width:260px;max-width:260px;flex-shrink:0;background:#fff;border-right:2px solid #e5e7eb;overflow-y:auto;'
         : 'background:#fff;border-bottom:2px solid #e5e7eb;flex-shrink:0;')
     + '">'
-    + '<div style="padding:6px 8px 2px;display:flex;align-items:center;justify-content:space-between">'
-    + '<button onclick="navPrev()" style="background:none;border:none;cursor:pointer;padding:4px 10px;font-size:16px;color:#6b7280">&#8249;</button>'
-    + '<span style="font-size:14px;font-weight:700;color:#374151">'+y+'年'+m+'月</span>'
-    + '<button onclick="navNext()" style="background:none;border:none;cursor:pointer;padding:4px 10px;font-size:16px;color:#6b7280">&#8250;</button>'
+    + '<div style="padding:' + (isPC?'6px':'2px') + ' 8px 1px;display:flex;align-items:center;justify-content:space-between">'
+    + '<button onclick="navPrev()" style="background:none;border:none;cursor:pointer;padding:' + (isPC?'4px 10px':'2px 8px') + ';font-size:' + (isPC?'16':'14') + 'px;color:#6b7280">&#8249;</button>'
+    + '<span style="font-size:' + (isPC?'14':'12') + 'px;font-weight:700;color:#374151">'+y+'年'+m+'月</span>'
+    + '<button onclick="navNext()" style="background:none;border:none;cursor:pointer;padding:' + (isPC?'4px 10px':'2px 8px') + ';font-size:' + (isPC?'16':'14') + 'px;color:#6b7280">&#8250;</button>'
     + '</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;padding:0 4px 2px">'+hdrHtml+'</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;padding:0 4px 8px">'+cellsHtml+'</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;padding:0 4px ' + (isPC?'2px':'1px') + '">'+hdrHtml+'</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;padding:0 4px ' + (isPC?'8px':'4px') + '">'+cellsHtml+'</div>'
     + '</div>';
 
   // ── 詳細パネル ──────────────────────────────────────────────
