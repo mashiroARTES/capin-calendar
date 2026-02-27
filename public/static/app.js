@@ -855,21 +855,8 @@ function renderMonthView() {
     }
   }
 
-  // 各列の幅（当日/翌日の列=30%、同じ行の他列=（70%÷6）、他行は均等14.28%）
-  // 当日・翌日がある列インデックスを特定
-  const keyColSet = new Set();
-  cells.forEach((c, i) => { if (c && (c.isToday || c.isTomorrow)) keyColSet.add(i % 7); });
-
-  let colWidths;
-  if (keyColSet.size > 0) {
-    // キー列が占める幅の合計 = キー列数 × 30%
-    const keyCount = keyColSet.size;
-    const keyW = 30;
-    const otherW = (100 - keyCount * keyW) / (7 - keyCount);
-    colWidths = Array.from({length:7}, (_, ci) => keyColSet.has(ci) ? keyW : otherW);
-  } else {
-    colWidths = Array(7).fill(100/7);
-  }
+  // 各列の幅（全列均等）
+  const colWidths = Array(7).fill(100/7);
 
   // 時間帯判定
   const getSlot = t => {
