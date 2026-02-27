@@ -55,7 +55,14 @@ dayNotes.put('/:date', optionalAuthMiddleware, async (c) => {
     }
 
     const { content } = await c.req.json();
-    const text = (content || '').trim().slice(0, 200); // 最大200文字
+    // 最大3行・各行200文字・合計600文字
+    const rawLines = (content || '').split('\n');
+    const text = rawLines
+      .slice(0, 3)
+      .map((l: string) => l.trim().slice(0, 200))
+      .join('\n')
+      .trim()
+      .slice(0, 600);
 
     // UPSERT（存在すれば上書き、なければ新規作成）
     await c.env.DB.prepare(`

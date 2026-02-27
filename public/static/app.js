@@ -434,7 +434,8 @@ function updateViewBtns() {
 function renderContent() {
   const el = document.getElementById('cal-content');
   if (!el) return;
-  el.style.overflow = State.viewMode === 'month' ? 'hidden' : 'auto';
+  // クイックビューは内部でflexを使うためoverflow:hidden必須
+  el.style.overflow = (State.viewMode === 'month' || State.viewMode === 'quick') ? 'hidden' : 'auto';
   if (State.loading) {
     el.innerHTML = `<div class="flex items-center justify-center h-full"><div class="spinner"></div></div>`;
     return;
@@ -462,56 +463,81 @@ function calNoteBadgeHtml(dateStr) {
   </div>`;
 }
 
-// 日別モーダル内の掲示板UI（表示＋インライン編集）
+// 日別モーダル内の掲示板UI（表示＋インライン編集、メモ最大3行）
 function dayNoteSectionHtml(dateStr) {
   const note = State.dayNotes[dateStr];
   const content = note ? note.content : '';
+  // 3行に分割（改行で区切り、最大3行）
+  const lines = content ? content.split('\n').slice(0, 3) : ['', '', ''];
+  while (lines.length < 3) lines.push('');
   const updater = note && note.updated_by_name ? note.updated_by_name : '';
   const isGuest = State.guestMode || !State.user;
 
-  return `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4" id="day-note-section">
-    <div class="flex items-center gap-2 mb-2">
-      <span class="text-base">📌</span>
-      <span class="text-sm font-bold text-amber-800">今日のひとこと掲示板</span>
-      ${updater ? `<span class="text-xs text-amber-500 ml-auto">最終更新: ${escHtml(updater)}</span>` : ''}
-    </div>
-    ${isGuest
-      ? `<div class="text-sm text-amber-700 min-h-[28px] px-1 py-0.5 rounded leading-relaxed">
-          ${content ? escHtml(content) : '<span class="opacity-50 italic">まだメモがありません</span>'}
-         </div>
-         <p class="text-xs text-amber-500 mt-1.5"><i class="fas fa-lock mr-1"></i>書き込みにはログインが必要です</p>`
-      : `<textarea id="day-note-input" class="note-edit-area w-full" rows="2"
-          maxlength="200" placeholder="この日のひとこと、連絡事項など…（200文字以内）"
-          oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"
-        >${escHtml(content)}</textarea>
-        <div class="flex items-center justify-between mt-1.5">
-          <span id="day-note-count" class="text-xs text-amber-400">${content.length}/200</span>
-          <button id="day-note-save-btn" onclick="saveDayNote('${dateStr}')"
-            class="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded-lg font-semibold transition-colors flex items-center gap-1">
-            <i class="fas fa-save"></i>保存
-          </button>
-        </div>`
+  const updaterHtml = updater ? '<span class="text-xs text-amber-500 ml-auto">最終更新: '+escHtml(updater)+'</span>' : '';
+
+  let bodyHtml;
+  if (isGuest) {
+    const displayLines = lines.filter(l => l.trim());
+    if (displayLines.length > 0) {
+      bodyHtml = displayLines.map(function(l) {
+        return '<div class="text-sm text-amber-700 leading-relaxed">📌 '+escHtml(l)+'</div>';
+      }).join('');
+    } else {
+      bodyHtml = '<div class="text-sm text-amber-700 opacity-50 italic">まだメモがありません</div>';
     }
-  </div>`;
+    bodyHtml += '<p class="text-xs text-amber-500 mt-1.5"><i class="fas fa-lock mr-1"></i>書き込みにはログインが必要です</p>';
+  } else {
+    const charCount = lines.join('\n').replace(/\n$/, '').length;
+    bodyHtml =
+      '<div class="space-y-1.5 mb-2">'
+      + '<div class="flex items-center gap-1.5"><span class="text-xs text-amber-500 w-10 flex-shrink-0">1行目</span>'
+      + '<input id="day-note-line1" type="text" maxlength="100" value="'+escHtml(lines[0])+'"'
+      + ' class="flex-1 text-sm border border-amber-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-amber-400" placeholder="1行目（100文字以内）"></div>'
+      + '<div class="flex items-center gap-1.5"><span class="text-xs text-amber-500 w-10 flex-shrink-0">2行目</span>'
+      + '<input id="day-note-line2" type="text" maxlength="100" value="'+escHtml(lines[1])+'"'
+      + ' class="flex-1 text-sm border border-amber-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-amber-400" placeholder="2行目（任意）"></div>'
+      + '<div class="flex items-center gap-1.5"><span class="text-xs text-amber-500 w-10 flex-shrink-0">3行目</span>'
+      + '<input id="day-note-line3" type="text" maxlength="100" value="'+escHtml(lines[2])+'"'
+      + ' class="flex-1 text-sm border border-amber-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-amber-400" placeholder="3行目（任意）"></div>'
+      + '</div>'
+      + '<div class="flex items-center justify-between mt-1.5">'
+      + '<span id="day-note-count" class="text-xs text-amber-400">'+charCount+'/300文字</span>'
+      + '<button id="day-note-save-btn" onclick="saveDayNote(\''+dateStr+'\')"'
+      + ' class="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded-lg font-semibold transition-colors flex items-center gap-1">'
+      + '<i class="fas fa-save"></i>保存</button>'
+      + '</div>';
+  }
+
+  return '<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4" id="day-note-section">'
+    + '<div class="flex items-center gap-2 mb-2">'
+    + '<span class="text-base">📌</span>'
+    + '<span class="text-sm font-bold text-amber-800">ひとこと掲示板（最大3行）</span>'
+    + updaterHtml
+    + '</div>'
+    + bodyHtml
+    + '</div>';
 }
 
-// 掲示板を保存してUIを更新
+// 掲示板を保存してUIを更新（3行対応）
 async function saveDayNote(dateStr) {
-  const input = document.getElementById('day-note-input');
-  const btn   = document.getElementById('day-note-save-btn');
-  if (!input || !btn) return;
-  const content = input.value.trim();
+  const l1 = document.getElementById('day-note-line1');
+  const l2 = document.getElementById('day-note-line2');
+  const l3 = document.getElementById('day-note-line3');
+  const btn = document.getElementById('day-note-save-btn');
+  if (!btn) return;
+  // 3行を改行結合（末尾の空行は除く）
+  const lines = [l1 ? l1.value.trim() : '', l2 ? l2.value.trim() : '', l3 ? l3.value.trim() : ''];
+  // 末尾の空行を除去
+  while (lines.length > 0 && lines[lines.length-1] === '') lines.pop();
+  const content = lines.join('\n');
   btn.disabled = true; btn.innerHTML = '<div class="spinner w-3 h-3"></div>';
   const r = await API.put('/day-notes/' + dateStr, { content });
   if (r.ok) {
-    // Stateを即時更新（リロードなし）
     State.dayNotes[dateStr] = r.data.note;
     showToast('掲示板を更新しました', 'success', 2000);
     btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i>保存';
-    // 文字数カウント更新
     const cnt = document.getElementById('day-note-count');
-    if (cnt) cnt.textContent = content.length + '/200';
-    // カレンダーのバッジも更新（月ビューの場合）
+    if (cnt) cnt.textContent = content.length + '/300文字';
     if (State.viewMode === 'month' || State.viewMode === 'week') {
       renderContent();
     }
@@ -528,14 +554,17 @@ function listNoteBannerHtml(dateStr) {
   const isGuest = State.guestMode || !State.user;
   // 内容があるか、ログイン済みのときだけ表示
   if (!hasContent && isGuest) return '';
-  return `<div class="day-note-bar mb-2" onclick="openDayView('${dateStr}',true)">
-    <span class="note-icon">📌</span>
-    ${hasContent
-      ? `<span class="note-text">${escHtml(note.content)}</span>`
-      : `<span class="note-empty">この日のひとことを書く…</span>`
-    }
-    ${!isGuest ? '<span style="font-size:9px;color:#d97706;flex-shrink:0"><i class="fas fa-pencil-alt"></i></span>' : ''}
-  </div>`;
+  // 複数行の先頭行のみプレビュー
+  const previewText = hasContent ? note.content.split('\n')[0] : '';
+  const editIcon = !isGuest ? '<span style="font-size:9px;color:#d97706;flex-shrink:0"><i class="fas fa-pencil-alt"></i></span>' : '';
+  const inner = hasContent
+    ? '<span class="note-text">' + escHtml(previewText) + '</span>'
+    : '<span class="note-empty">この日のひとことを書く…</span>';
+  return '<div class="day-note-bar mb-2" onclick="openDayView(\'' + dateStr + '\',true)">'
+    + '<span class="note-icon">📌</span>'
+    + inner
+    + editIcon
+    + '</div>';
 }
 
 // ============================================================
@@ -602,71 +631,85 @@ function locationCountHtml(shifts) {
 }
 
 // ============================================================
-// クイックビュー（上部：ミニカレンダー / 下部：選択日の詳細一覧）
+// クイックビュー（上部：ミニカレンダー ~1/3 / 下部：選択日の詳細 ~2/3）
 // ============================================================
 function renderQuickView() {
   const {currentYear:y, currentMonth:m} = State;
   const firstDay = new Date(y, m-1, 1).getDay();
   const lastDate = new Date(y, m, 0).getDate();
   const today    = new Date().toISOString().split('T')[0];
-  const sel      = State.selectedDate;
+  const sel      = State.selectedDate || today;
   const DAYS     = ['日','月','火','水','木','金','土'];
   const DCOL     = ['#ef4444','#374151','#374151','#374151','#374151','#374151','#3b82f6'];
 
-  // シフトを日付でマップ
   const map = {};
   State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date]||[]).push(s); });
 
-  // ── ミニカレンダー ──────────────────────────────────────────
-  // 曜日ヘッダー
+  // ── ミニカレンダー（画面上部 ~1/3）──────────────────────────
   const hdrHtml = DAYS.map((d,i) =>
-    `<div style="text-align:center;font-size:9px;font-weight:700;color:${DCOL[i]};padding:1px 0">${d}</div>`
+    '<div style="text-align:center;font-size:11px;font-weight:700;color:'+DCOL[i]+';padding:3px 0">'+d+'</div>'
   ).join('');
 
-  // 空白セル
   let cells = Array(firstDay).fill(null);
-  for (let d = 1; d <= lastDate; d++) {
-    cells.push(d);
-  }
-  // 7の倍数に揃える
+  for (let d = 1; d <= lastDate; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const cellsHtml = cells.map((d, i) => {
-    if (!d) return `<div style="aspect-ratio:1;min-width:0"></div>`;
-    const ds  = y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+  const cellsHtml = cells.map(function(d) {
+    if (!d) return '<div style="aspect-ratio:1;min-width:0"></div>';
+    const ds      = y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0');
     const isToday = ds === today;
     const isSel   = ds === sel;
     const hasSh   = (map[ds]||[]).length > 0;
     const dotCol  = hasSh ? '#3b82f6' : 'transparent';
-    const bgStyle = isSel
-      ? 'background:#3b82f6;color:white;border-radius:50%'
-      : isToday
-      ? 'background:#fef3c7;border-radius:50%;font-weight:800'
-      : '';
-    return `<div onclick="selectQuickDate('${ds}')"
-      style="aspect-ratio:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;padding:1px">
-      <div style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;${bgStyle}">
-        <span style="font-size:11px;line-height:1;font-weight:${isToday||isSel?'800':'500'}">${d}</span>
-      </div>
-      <div style="width:4px;height:4px;border-radius:50%;background:${isSel?'white':dotCol};margin-top:1px"></div>
-    </div>`;
+    let bg = '';
+    if (isSel)   bg = 'background:#3b82f6;color:#fff;border-radius:50%';
+    else if (isToday) bg = 'background:#fef3c7;border-radius:50%';
+    const fw = (isToday||isSel) ? '800' : '400';
+    const dc = isSel ? '#93c5fd' : dotCol;
+    return '<div onclick="selectQuickDate(\'' + ds + '\')" style="aspect-ratio:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent">'
+      + '<div style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;' + bg + '">'
+      + '<span style="font-size:13px;line-height:1;font-weight:' + fw + '">' + d + '</span>'
+      + '</div>'
+      + '<div style="width:5px;height:5px;border-radius:50%;background:' + dc + ';margin-top:1px"></div>'
+      + '</div>';
   }).join('');
 
-  const miniCal = `<div style="padding:4px 6px 2px;background:white;border-bottom:1px solid #e5e7eb">
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0">${hdrHtml}</div>
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0">${cellsHtml}</div>
-  </div>`;
+  const miniCal =
+    '<div id="quick-cal" style="background:#fff;border-bottom:2px solid #e5e7eb;flex-shrink:0">'
+    + '<div style="padding:3px 8px 0;display:flex;align-items:center;justify-content:space-between">'
+    + '<button onclick="navPrev()" style="background:none;border:none;cursor:pointer;padding:4px 10px;font-size:16px;color:#6b7280">&#8249;</button>'
+    + '<span style="font-size:14px;font-weight:700;color:#374151">'+y+'年'+m+'月</span>'
+    + '<button onclick="navNext()" style="background:none;border:none;cursor:pointer;padding:4px 10px;font-size:16px;color:#6b7280">&#8250;</button>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;padding:0 4px 2px">'+hdrHtml+'</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;padding:0 4px 6px">'+cellsHtml+'</div>'
+    + '</div>';
 
-  // ── 選択日の詳細一覧 ──────────────────────────────────────
-  const selDate   = sel || today;
-  const dayShifts = (map[selDate]||[]).sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
-  const isAdmin   = State.user && State.user.role === 'admin';
+  // ── 詳細パネル（下部 ~2/3）──────────────────────────────────
+  const detailHtml = buildQuickDetail(sel, map);
+
+  return '<div style="display:flex;flex-direction:column;height:100%;background:#f9fafb">'
+    + miniCal
+    + '<div id="quick-detail" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch">'+detailHtml+'</div>'
+    + '</div>';
+}
+
+// 詳細パネルのHTML生成（selectQuickDateから差し替えにも使用）
+function buildQuickDetail(selDate, map) {
+  const today    = new Date().toISOString().split('T')[0];
+  const sd       = selDate || today;
+  if (!map) {
+    map = {};
+    State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date]||[]).push(s); });
+  }
+  const dayShifts = (map[sd]||[]).sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
   const isGuest   = State.guestMode || !State.user;
 
-  // 日付ラベル
-  const dObj = new Date(selDate + 'T12:00:00');
-  const dayNames = ['日','月','火','水','木','金','土'];
-  const dateLabel = `${dObj.getMonth()+1}月${dObj.getDate()}日（${dayNames[dObj.getDay()]}）`;
+  // 日付ヘッダー
+  const dObj    = new Date(sd + 'T12:00:00');
+  const DN      = ['日','月','火','水','木','金','土'];
+  const isToday = sd === today;
+  const dateLabel = `${dObj.getMonth()+1}月${dObj.getDate()}日（${DN[dObj.getDay()]}）` + (isToday ? ' 今日' : '');
 
   // 場所×活動 別人数サマリー
   const actLabel = t => t==='dog'?'犬':t==='cat'?'猫':null;
@@ -679,22 +722,32 @@ function renderQuickView() {
   dayShifts.forEach(s => {
     const al = actLabel(s.activity_type||s.animal_type||'');
     if (!al) return;
-    const loc = getLocationLabel(s)||'未設定';
+    const loc   = getLocationLabel(s)||'未設定';
     const color = s.calendar_color||'#9ca3af';
-    const k = loc+'__'+al;
+    const k     = loc+'__'+al;
     if (!key2[k]) key2[k] = {short:shortLoc(loc),al,color,count:0};
     key2[k].count++;
   });
-  const summaryItems = Object.values(key2).map(({short,al,color,count}) =>
-    `<span style="display:inline-flex;align-items:center;gap:1px;white-space:nowrap;background:#f3f4f6;border-radius:4px;padding:1px 4px;font-size:11px;font-weight:700;color:#374151">
-      <span style="color:${color};font-size:9px">●</span>${escHtml(short)}${escHtml(al)}<span style="color:#3b82f6">${count}</span>
-    </span>`
-  ).join('');
-  const summaryHtml = summaryItems
-    ? `<div style="display:flex;flex-wrap:wrap;gap:3px;padding:4px 8px 4px;border-bottom:1px solid #f0f0f0">${summaryItems}</div>`
+  const summaryHtml = Object.values(key2).length
+    ? `<div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px 4px">` +
+      Object.values(key2).map(({short,al,color,count}) =>
+        `<span style="display:inline-flex;align-items:center;gap:2px;background:#f3f4f6;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700;color:#374151">` +
+        `<span style="color:${color};font-size:10px">●</span>${escHtml(short)}${escHtml(al)}<span style="color:#3b82f6;margin-left:1px">${count}</span></span>`
+      ).join('') + `</div>`
     : '';
 
-  // 時間帯ごとに参加者を横並び
+  // メモ表示（3行まで）
+  const note     = State.dayNotes[sd];
+  const lines    = note && note.content
+    ? note.content.split('\n').filter(l => l.trim())
+    : [];
+  const noteHtml = lines.length
+    ? `<div style="margin:4px 10px 2px;padding:6px 10px;background:#fffbeb;border-radius:8px;border-left:3px solid #f59e0b">` +
+      lines.map(l => `<div style="font-size:12px;color:#92400e;line-height:1.5">📌 ${escHtml(l)}</div>`).join('') +
+      `</div>`
+    : '';
+
+  // 時間帯ごと参加者チップ（横並び）
   const SLOTS = [
     {key:'morning',  label:'朝', hc:'#d97706'},
     {key:'afternoon',label:'昼', hc:'#059669'},
@@ -710,78 +763,73 @@ function renderQuickView() {
   const slotMap = {morning:[],afternoon:[],night:[]};
   dayShifts.forEach(s => slotMap[getSlot(s.start_time)].push(s));
 
-  const slotRowsHtml = SLOTS.map(({key,label,hc}) => {
+  const slotsHtml = SLOTS.map(({key,label,hc}) => {
     const ss = slotMap[key];
     if (!ss.length) return '';
-    // 参加者を横並びチップ形式
     const chips = ss.map(s => {
       const color  = s.calendar_color||'#4f8ef7';
       const emoji  = getActivityEmoji(s);
       const isMine = State.user && s.user_id === State.user.id;
       const safeS  = encodeURIComponent(JSON.stringify(s));
       return `<div onclick="event.stopPropagation();showDetail(decodeURIComponent('${safeS}'))"
-        style="display:inline-flex;align-items:center;gap:3px;background:${isMine?'#eff6ff':'#f9fafb'};border:1px solid ${isMine?'#bfdbfe':'#e5e7eb'};border-radius:20px;padding:3px 8px;cursor:pointer;white-space:nowrap;flex-shrink:0">
-        <span style="font-size:11px">${emoji}</span>
-        <span style="font-size:12px;font-weight:${isMine?'700':'500'};color:${isMine?'#1d4ed8':'#374151'}">${escHtml(s.user_name)}</span>
-        ${s.start_time ? '<span style="font-size:10px;color:#9ca3af">'+s.start_time.slice(0,5)+'</span>' : ''}
-      </div>`;
+        style="display:inline-flex;align-items:center;gap:4px;` +
+        `background:${isMine?'#eff6ff':'#fff'};` +
+        `border:1.5px solid ${isMine?'#93c5fd':'#e5e7eb'};` +
+        `border-radius:20px;padding:4px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0;` +
+        `-webkit-tap-highlight-color:transparent">` +
+        `<span style="font-size:12px">${emoji}</span>` +
+        `<span style="font-size:13px;font-weight:${isMine?'700':'500'};color:${isMine?'#1d4ed8':color}">${escHtml(s.user_name)}</span>` +
+        (s.start_time ? `<span style="font-size:10px;color:#9ca3af">${s.start_time.slice(0,5)}</span>` : '') +
+        `</div>`;
     }).join('');
-    return `<div style="padding:4px 8px 2px">
-      <div style="font-size:10px;font-weight:800;color:${hc};margin-bottom:3px">${label}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div>
+    return `<div style="padding:4px 10px 6px">
+      <div style="font-size:11px;font-weight:800;color:${hc};margin-bottom:4px;letter-spacing:0.03em">${label}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
     </div>`;
   }).filter(Boolean).join('');
 
-  // 空のとき
   const emptyHtml = dayShifts.length === 0
-    ? `<div style="text-align:center;color:#9ca3af;font-size:13px;padding:24px 0">この日のシフトはありません</div>`
+    ? `<div style="text-align:center;color:#9ca3af;font-size:14px;padding:32px 0">この日のシフトはありません</div>`
     : '';
 
-  // 一行掲示板
-  const note = State.dayNotes[selDate];
-  const noteHtml = note && note.content
-    ? `<div style="margin:4px 8px;padding:4px 8px;background:#fffbeb;border-radius:6px;font-size:11px;color:#92400e">
-        <i class="fas fa-thumbtack" style="margin-right:4px"></i>${escHtml(note.content)}
-      </div>`
-    : '';
-
-  // 登録ボタン
   const addBtn = !isGuest
-    ? `<button onclick="openShiftForm('${selDate}')"
-        style="display:flex;align-items:center;gap:4px;background:#3b82f6;color:white;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;margin:6px 8px">
-        <i class="fas fa-plus"></i>シフトを登録
-      </button>`
+    ? `<button onclick="openShiftForm('${sd}')"
+        style="display:flex;align-items:center;justify-content:center;gap:6px;width:calc(100% - 20px);` +
+        `margin:8px 10px 16px;background:#3b82f6;color:#fff;border:none;border-radius:10px;` +
+        `padding:10px;font-size:13px;font-weight:600;cursor:pointer">` +
+        `<i class="fas fa-plus"></i>この日にシフトを登録</button>`
     : '';
 
-  const detailPanel = `<div style="background:white;overflow-y:auto;flex:1">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px 2px;border-bottom:1px solid #f0f0f0">
-      <span style="font-size:13px;font-weight:800;color:#1f2937">${dateLabel}</span>
-      <span style="font-size:11px;color:#9ca3af">${dayShifts.length}名</span>
+  return `<div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px 4px;border-bottom:1px solid #e5e7eb;background:#fff;position:sticky;top:0;z-index:1">
+      <span style="font-size:14px;font-weight:800;color:${isToday?'#1d4ed8':'#1f2937'}">${dateLabel}</span>
+      <span style="font-size:12px;color:#9ca3af">${dayShifts.length}名参加</span>
     </div>
     ${noteHtml}
     ${summaryHtml}
-    ${slotRowsHtml}
+    ${slotsHtml}
     ${emptyHtml}
     ${addBtn}
   </div>`;
-
-  return `<div style="display:flex;flex-direction:column;height:100%">
-    ${miniCal}
-    ${detailPanel}
-  </div>`;
 }
 
-// クイックビューで日付を選択
+// クイックビューで日付を選択（全体再描画）
 function selectQuickDate(ds) {
   State.selectedDate = ds;
-  // 月が変わった場合はシフトを再ロード
-  const d = new Date(ds + 'T12:00:00');
+
+  // 月をまたぐ場合はシフトをリロード
+  const d  = new Date(ds + 'T12:00:00');
   const ny = d.getFullYear(), nm = d.getMonth()+1;
   if (ny !== State.currentYear || nm !== State.currentMonth) {
-    State.currentYear = ny; State.currentMonth = nm;
+    State.currentYear = ny;
+    State.currentMonth = nm;
     updateMonthLabel();
     App.loadAndRenderShifts();
-  } else {
+    return;
+  }
+
+  // クイックビュー全体を再描画（選択状態・詳細両方を更新）
+  if (State.viewMode === 'quick') {
     renderContent();
   }
 }
