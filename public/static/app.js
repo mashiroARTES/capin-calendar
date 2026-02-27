@@ -56,7 +56,7 @@ const State = {
   currentYear:  new Date().getFullYear(),
   currentMonth: new Date().getMonth() + 1,
   viewMode: 'quick',   // 'quick' | 'month' | 'list'
-  selectedDate: new Date().toISOString().split('T')[0], // クイックビュー選択日
+  selectedDate: todayLocal(), // クイックビュー選択日
   loading: false,
 };
 
@@ -280,6 +280,18 @@ function renderRegister(prefill) {
 // HTML エスケープ
 function escHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ============================================================
+// 日付ユーティリティ（ローカル時刻で今日の YYYY-MM-DD を返す）
+// new Date().toISOString() は UTC 基準のため、JST(UTC+9)の深夜に
+// 日付が1日ズレる不具合を防ぐ
+// ============================================================
+function todayLocal() {
+  const d = new Date();
+  return d.getFullYear() + '-'
+    + String(d.getMonth() + 1).padStart(2, '0') + '-'
+    + String(d.getDate()).padStart(2, '0');
 }
 
 // ============================================================
@@ -599,7 +611,7 @@ function renderQuickView() {
   const {currentYear:y, currentMonth:m} = State;
   const firstDay = new Date(y, m-1, 1).getDay();
   const lastDate = new Date(y, m, 0).getDate();
-  const today    = new Date().toISOString().split('T')[0];
+  const today    = todayLocal();
   const sel      = State.selectedDate || today;
   const DAYS     = ['日','月','火','水','木','金','土'];
   const DCOL     = ['#ef4444','#374151','#374151','#374151','#374151','#374151','#3b82f6'];
@@ -674,7 +686,7 @@ function renderQuickView() {
 
 // 詳細パネルのHTML生成（selectQuickDateから差し替えにも使用）
 function buildQuickDetail(selDate, map) {
-  const today    = new Date().toISOString().split('T')[0];
+  const today    = todayLocal();
   const sd       = selDate || today;
   if (!map) {
     map = {};
@@ -748,8 +760,7 @@ function buildQuickDetail(selDate, map) {
       const color  = s.calendar_color||'#4f8ef7';
       const emoji  = getActivityEmoji(s);
       const isMine = State.user && s.user_id === State.user.id;
-      const safeS  = encodeURIComponent(JSON.stringify(s));
-      return `<div onclick="event.stopPropagation();showDetail(decodeURIComponent('${safeS}'))"
+      return `<div onclick="event.stopPropagation();showDetailById(s.id)"
         style="display:inline-flex;align-items:center;gap:4px;` +
         `background:${isMine?'#eff6ff':'#fff'};` +
         `border:1.5px solid ${isMine?'#93c5fd':'#e5e7eb'};` +
@@ -915,9 +926,8 @@ function renderMonthView() {
         badges += `<div style="font-size:8px;color:${hc};font-weight:800;line-height:1.4;overflow:hidden;white-space:nowrap;letter-spacing:0.02em">${mark}</div>`;
         slotMap[key].forEach(s => {
           const color = s.calendar_color||'#4f8ef7';
-          const safeS = encodeURIComponent(JSON.stringify(s));
           badges += `<div style="display:flex;align-items:center;gap:1px;overflow:hidden;cursor:pointer;padding-left:2px"
-            onclick="event.stopPropagation();showDetail(decodeURIComponent('${safeS}'))">
+            onclick="event.stopPropagation();showDetailById(s.id)">
             <span style="font-size:8px;flex-shrink:0">${getActivityEmoji(s)}</span>
             <span style="font-size:9px;font-weight:600;color:${color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.user_name)}</span>
           </div>`;
@@ -967,7 +977,7 @@ function renderListView() {
 
   const grp = {};
   State.shifts.forEach(s => { (grp[s.shift_date] = grp[s.shift_date] || []).push(s); });
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayLocal();
   const dayNames = ['日','月','火','水','木','金','土'];
   const isAdmin = State.user && State.user.role === 'admin';
 
@@ -992,13 +1002,12 @@ function renderListView() {
       const timeStr = s.start_time ? s.start_time.slice(0,5) + (s.end_time?' ～ '+s.end_time.slice(0,5):'') : '';
       const stMap = { approved:'承認済', rejected:'却下' };
       const stColor = { approved:'green', rejected:'red' };
-      const safeS = encodeURIComponent(JSON.stringify(s));
       const isMine = s.user_id === (State.user && State.user.id);
       const locLabel = getLocationLabel(s);
       const actLabel = getActivityLabel(s);
       html += `<div class="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm border-l-4 cursor-pointer hover:shadow-md transition-shadow ${isMine?'bg-blue-50':''}"
         style="border-left-color:${color}"
-        onclick="showDetail(decodeURIComponent('${safeS}'))">
+        onclick="showDetailById(s.id)">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-1.5 flex-wrap">
             <span class="font-semibold text-gray-800 text-sm">${escHtml(s.user_name)}</span>
@@ -1034,7 +1043,7 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
     return;
   }
   const isAdmin = State.user && State.user.role === 'admin';
-  const dateVal = defaultDate || new Date().toISOString().split('T')[0];
+  const dateVal = defaultDate || todayLocal();
   const cal = State.calendars;
   const defaultCalId = State.currentCalendarSlug
     ? (cal.find(c => c.slug === State.currentCalendarSlug) || cal[0] || {}).id
@@ -1268,7 +1277,7 @@ function openDayView(dateStr, focusNote = false) {
   const d = new Date(dateStr + 'T12:00:00');
   const dayNames = ['日','月','火','水','木','金','土'];
   const dayName  = dayNames[d.getDay()];
-  const isToday  = dateStr === new Date().toISOString().split('T')[0];
+  const isToday  = dateStr === todayLocal();
   const dispDate = dateStr.replace(/-/g, '/') + '（' + dayName + '）';
   const isGuest  = State.guestMode || !State.user;
   const isAdmin  = State.user && State.user.role === 'admin';
@@ -1296,9 +1305,8 @@ function openDayView(dateStr, focusNote = false) {
     const end_t   = s.end_time   ? s.end_time.slice(0,5)   : null;
     const stMap   = { approved:'承認済', rejected:'却下' };
     const stClass = { approved:'bg-green-100 text-green-700', rejected:'bg-red-100 text-red-700' };
-    const safeS   = encodeURIComponent(JSON.stringify(s));
     return `<div class="flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-gray-50 transition-colors ${isMine?'bg-blue-50':''}"
-      onclick="showDetail(decodeURIComponent('${safeS}'))">
+      onclick="showDetailById(s.id)">
       <!-- カラーバー -->
       <div class="w-1 self-stretch rounded-full flex-shrink-0" style="background:${color}"></div>
       <!-- 時刻 -->
@@ -1326,14 +1334,13 @@ function openDayView(dateStr, focusNote = false) {
     const emoji   = getActivityEmoji(s);
     const actLabel = getActivityLabel(s);
     const locLabel = getLocationLabel(s);
-    const safeS   = encodeURIComponent(JSON.stringify(s));
     const stMap   = { approved:'承認済', rejected:'却下' };
     const stClass = { approved:'bg-green-100 text-green-700', rejected:'bg-red-100 text-red-700' };
     const isMine  = s.user_id === (State.user && State.user.id);
     const start   = s.start_time ? s.start_time.slice(0,5) : null;
     const end_t   = s.end_time   ? s.end_time.slice(0,5)   : null;
 
-    return `<div class="day-shift-card ${isMine ? 'is-mine' : ''}" onclick="showDetail(decodeURIComponent('${safeS}'))">
+    return `<div class="day-shift-card ${isMine ? 'is-mine' : ''}" onclick="showDetailById(s.id)">
       <div class="shift-time-col">
         ${start ? `
           <div class="t-start">${start}</div>
@@ -1544,6 +1551,13 @@ function dvSwitchTab(tab) {
 // ============================================================
 // シフト詳細モーダル
 // ============================================================
+// シフトIDから State.shifts を検索して詳細表示（シングルクォート問題回避）
+function showDetailById(id) {
+  const s = State.shifts.find(x => x.id === id) || State.allShifts && State.allShifts.find(x => x.id === id);
+  if (!s) return;
+  showDetail(s);
+}
+
 function showDetail(shiftStr) {
   let s;
   try { s = typeof shiftStr === 'string' ? JSON.parse(shiftStr) : shiftStr; } catch { return; }
@@ -1557,7 +1571,6 @@ function showDetail(shiftStr) {
   const stColor = { approved:'green', rejected:'red' };
   const isOwner = s.user_id === (State.user && State.user.id);
   const isAdmin = State.user && State.user.role === 'admin';
-  const safeS = encodeURIComponent(JSON.stringify(s));
 
   document.getElementById('modal-root').innerHTML = `
   <div class="modal-overlay" onclick="closeModalOuter(event)">
@@ -1591,7 +1604,7 @@ function showDetail(shiftStr) {
       </div>
       ${(isOwner || isAdmin) ? `
       <div class="flex gap-2">
-        <button onclick="openEditForm('${safeS}')"
+        <button onclick="openEditFormById(${s.id})"
           class="flex-1 border border-gray-300 text-gray-600 py-2 rounded-lg text-sm hover:bg-gray-50 flex items-center justify-center gap-1">
           <i class="fas fa-edit"></i>${isAdmin && !isOwner ? '管理者として編集' : '編集'}
         </button>
@@ -1607,6 +1620,12 @@ function showDetail(shiftStr) {
 // ============================================================
 // シフト編集モーダル
 // ============================================================
+function openEditFormById(id) {
+  const s = State.shifts.find(x => x.id === id);
+  if (!s) return;
+  openEditForm(s);
+}
+
 function openEditForm(shiftStr) {
   let s;
   try { s = typeof shiftStr === 'string' ? JSON.parse(decodeURIComponent(shiftStr)) : shiftStr; } catch { return; }
@@ -1921,7 +1940,7 @@ function goToToday() {
 }
 
 function openTodayDetail() {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayLocal();
   if (State.viewMode === 'quick') {
     // クイックビューなら選択日を今日にするだけ
     State.selectedDate = todayStr;
@@ -1951,7 +1970,7 @@ function openTodayDetail() {
 
 function setViewMode(mode) {
   State.viewMode = mode;
-  if (mode === 'quick') State.selectedDate = new Date().toISOString().split('T')[0];
+  if (mode === 'quick') State.selectedDate = todayLocal();
   updateViewBtns();
   updateMonthLabel();
   renderContent();
