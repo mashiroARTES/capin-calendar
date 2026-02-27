@@ -55,8 +55,7 @@ const State = {
   currentCalendarSlug: null,
   currentYear:  new Date().getFullYear(),
   currentMonth: new Date().getMonth() + 1,
-  viewMode: 'quick',   // 'quick' | 'month' | 'week' | 'list'
-  weekOffset: 0,       // 週ビュー用：当日含む週から何週ずらすか
+  viewMode: 'quick',   // 'quick' | 'month' | 'list'
   selectedDate: new Date().toISOString().split('T')[0], // クイックビュー選択日
   loading: false,
 };
@@ -124,16 +123,7 @@ const App = {
     const y = State.currentYear;
     const m = State.currentMonth;
 
-    // 週ビューの場合、表示範囲が月をまたぐ可能性があるため両月ロード
-    let months = [[y, m]];
-    if (State.viewMode === 'week') {
-      const range = getWeekViewRange();
-      const sm = range.startDate.getMonth()+1, sy = range.startDate.getFullYear();
-      const em = range.endDate.getMonth()+1,   ey = range.endDate.getFullYear();
-      months = [];
-      if (!months.some(([my,mm])=>my===sy&&mm===sm)) months.push([sy,sm]);
-      if (!months.some(([my,mm])=>my===ey&&mm===em)) months.push([ey,em]);
-    }
+    const months = [[y, m]];
 
     const slug = State.currentCalendarSlug;
     const fetchMonth = (fy, fm) => {
@@ -351,9 +341,6 @@ function renderShell() {
           <button id="view-month" onclick="setViewMode('month')" class="view-btn ${State.viewMode==='month'?'active':''}">
             <i class="fas fa-th mr-1 text-xs"></i>月
           </button>
-          <button id="view-week"  onclick="setViewMode('week')"  class="view-btn ${State.viewMode==='week'?'active':''}">
-            <i class="fas fa-calendar-week mr-1 text-xs"></i>週
-          </button>
           <button id="view-list"  onclick="setViewMode('list')"  class="view-btn ${State.viewMode==='list'?'active':''}">
             <i class="fas fa-list mr-1 text-xs"></i>一覧
           </button>
@@ -393,36 +380,12 @@ function updateCalTabs() {
 function updateMonthLabel() {
   const el = document.getElementById('month-label');
   if (!el) return;
-  if (State.viewMode === 'week') {
-    // 週ビュー：表示中の2週の開始日〜終了日を表示
-    const range = getWeekViewRange();
-    const s = range.startDate, e = range.endDate;
-    const sm = s.getMonth()+1, sd = s.getDate();
-    const em = e.getMonth()+1, ed = e.getDate();
-    el.textContent = sm + '/' + sd + '〜' + em + '/' + ed;
-  } else {
-    el.textContent = State.currentYear + '年' + State.currentMonth + '月';
-  }
+  el.textContent = State.currentYear + '年' + State.currentMonth + '月';
 }
 
 // 週ビューで表示する2週の開始/終了Dateを返す
-function getWeekViewRange() {
-  const today = new Date();
-  // 当日を含む週の日曜日を基点に
-  const baseDate = new Date(today);
-  baseDate.setDate(today.getDate() - today.getDay()); // 週の日曜へ
-  // weekOffset週ぶんずらす
-  baseDate.setDate(baseDate.getDate() + State.weekOffset * 7);
-  // 開始: baseDateの日曜
-  const startDate = new Date(baseDate);
-  // 終了: startDate + 13日（2週=14日間の最終日=土曜）
-  const endDate = new Date(baseDate);
-  endDate.setDate(baseDate.getDate() + 13);
-  return { startDate, endDate };
-}
-
 function updateViewBtns() {
-  ['quick','month','week','list'].forEach(m => {
+  ['quick','month','list'].forEach(m => {
     const el = document.getElementById('view-' + m);
     if (el) el.classList.toggle('active', m === State.viewMode);
   });
@@ -434,7 +397,7 @@ function updateViewBtns() {
 function renderContent() {
   const el = document.getElementById('cal-content');
   if (!el) return;
-  // クイックビューは内部でflexを使うためoverflow:hidden必須
+  // クイック・月ビューは内部でflexを使うためoverflow:hidden必須
   el.style.overflow = (State.viewMode === 'month' || State.viewMode === 'quick') ? 'hidden' : 'auto';
   if (State.loading) {
     el.innerHTML = `<div class="flex items-center justify-center h-full"><div class="spinner"></div></div>`;
@@ -442,7 +405,6 @@ function renderContent() {
   }
   if (State.viewMode === 'quick') el.innerHTML = renderQuickView();
   else if (State.viewMode === 'month') el.innerHTML = renderMonthView();
-  else if (State.viewMode === 'week') el.innerHTML = renderWeekView();
   else el.innerHTML = renderListView();
 }
 
@@ -538,7 +500,7 @@ async function saveDayNote(dateStr) {
     btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i>保存';
     const cnt = document.getElementById('day-note-count');
     if (cnt) cnt.textContent = content.length + '/300文字';
-    if (State.viewMode === 'month' || State.viewMode === 'week') {
+    if (State.viewMode === 'month') {
       renderContent();
     }
   } else {
@@ -674,24 +636,40 @@ function renderQuickView() {
       + '</div>';
   }).join('');
 
+  // ── カレンダー部分（コンパクト固定幅）──────────────────────
+  // PC(>=640px): 左カラム固定、スマホ: 上部に配置
+  const isPC = window.innerWidth >= 640;
+
   const miniCal =
-    '<div id="quick-cal" style="background:#fff;border-bottom:2px solid #e5e7eb;flex-shrink:0">'
-    + '<div style="padding:3px 8px 0;display:flex;align-items:center;justify-content:space-between">'
+    '<div id="quick-cal" style="'
+    + (isPC
+        ? 'width:260px;min-width:260px;max-width:260px;flex-shrink:0;background:#fff;border-right:2px solid #e5e7eb;overflow-y:auto;'
+        : 'background:#fff;border-bottom:2px solid #e5e7eb;flex-shrink:0;')
+    + '">'
+    + '<div style="padding:6px 8px 2px;display:flex;align-items:center;justify-content:space-between">'
     + '<button onclick="navPrev()" style="background:none;border:none;cursor:pointer;padding:4px 10px;font-size:16px;color:#6b7280">&#8249;</button>'
     + '<span style="font-size:14px;font-weight:700;color:#374151">'+y+'年'+m+'月</span>'
     + '<button onclick="navNext()" style="background:none;border:none;cursor:pointer;padding:4px 10px;font-size:16px;color:#6b7280">&#8250;</button>'
     + '</div>'
     + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;padding:0 4px 2px">'+hdrHtml+'</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;padding:0 4px 6px">'+cellsHtml+'</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;padding:0 4px 8px">'+cellsHtml+'</div>'
     + '</div>';
 
-  // ── 詳細パネル（下部 ~2/3）──────────────────────────────────
+  // ── 詳細パネル ──────────────────────────────────────────────
   const detailHtml = buildQuickDetail(sel, map);
 
-  return '<div style="display:flex;flex-direction:column;height:100%;background:#f9fafb">'
-    + miniCal
-    + '<div id="quick-detail" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch">'+detailHtml+'</div>'
-    + '</div>';
+  // PC: 左右並列（flex-row）、スマホ: 上下（flex-col）
+  if (isPC) {
+    return '<div style="display:flex;flex-direction:row;height:100%;background:#f9fafb">'
+      + miniCal
+      + '<div id="quick-detail" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;min-width:0">'+detailHtml+'</div>'
+      + '</div>';
+  } else {
+    return '<div style="display:flex;flex-direction:column;height:100%;background:#f9fafb">'
+      + miniCal
+      + '<div id="quick-detail" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch">'+detailHtml+'</div>'
+      + '</div>';
+  }
 }
 
 // 詳細パネルのHTML生成（selectQuickDateから差し替えにも使用）
@@ -982,143 +960,6 @@ function renderMonthView() {
     <div style="display:flex;width:100%;border-top:1px solid #e5e7eb;border-left:1px solid #e5e7eb">${headerHtml}</div>
     <div style="border-left:1px solid #e5e7eb">${bodyHtml}</div>
   </div>`;
-}
-
-// ============================================================
-// 週表示（2週表示・weekOffsetで1週ずつ移動）
-// ============================================================
-function renderWeekView() {
-  const today = new Date();
-  const DAYS = ['日','月','火','水','木','金','土'];
-  const DAY_COLORS = ['#ef4444','#374151','#374151','#374151','#374151','#374151','#3b82f6'];
-
-  const todayStr = today.toISOString().split('T')[0];
-  const tomDate  = new Date(today); tomDate.setDate(today.getDate()+1);
-  const tomStr   = tomDate.toISOString().split('T')[0];
-
-  // getWeekViewRange() で表示開始日（日曜）を取得
-  const {startDate} = getWeekViewRange();
-
-  // 2週分（14日）のセルを生成
-  const allDays = [];
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(startDate);
-    d.setDate(startDate.getDate() + i);
-    allDays.push(d);
-  }
-  // 週に分割
-  const week0 = allDays.slice(0, 7);
-  const week1 = allDays.slice(7, 14);
-  const weeks = [week0, week1];
-
-  // シフトマップ
-  const map = {};
-  State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date] || []).push(s); });
-
-  // 時間帯判定
-  const getSlot = t => {
-    if (!t) return 'night';
-    const h = parseInt(t.slice(0,2),10);
-    if (h>=3 && h<12) return 'morning';
-    if (h>=12 && h<17) return 'afternoon';
-    return 'night';
-  };
-  const SLOTS = [
-    {key:'morning',  mark:'朝', hc:'#d97706'},
-    {key:'afternoon',mark:'昼', hc:'#059669'},
-    {key:'night',    mark:'夜', hc:'#4f46e5'},
-  ];
-
-  // 列幅計算（当日/翌日=30%、他=（100-30×n）÷残り列数）
-  function calcWidths(days) {
-    const keyCount = days.filter(d => {
-      const ds = d.toISOString().split('T')[0];
-      return ds===todayStr || ds===tomStr;
-    }).length;
-    const otherW = keyCount > 0 ? (100 - keyCount*30)/(7-keyCount) : 100/7;
-    return days.map(d => {
-      const ds = d.toISOString().split('T')[0];
-      return (ds===todayStr || ds===tomStr) ? 30 : otherW;
-    });
-  }
-
-  let html = '<div style="padding:8px 4px 24px;display:flex;flex-direction:column;gap:8px">';
-
-  weeks.forEach((days, wi) => {
-    const colWidths = calcWidths(days);
-    const hasFocus  = days.some(d => { const ds=d.toISOString().split('T')[0]; return ds===todayStr||ds===tomStr; });
-
-    // 週ヘッダー（日付範囲）
-    const s = days[0], e = days[6];
-    const weekLabel = (s.getMonth()+1)+'/'+s.getDate()+'〜'+(e.getMonth()+1)+'/'+e.getDate();
-    const borderColor = hasFocus ? '#93c5fd' : '#e5e7eb';
-    const headBg      = hasFocus ? '#eff6ff' : '#f9fafb';
-    const labelColor  = hasFocus ? '#2563eb' : '#6b7280';
-    const labelWeight = hasFocus ? '700' : '400';
-    const cellMaxH    = hasFocus ? '720px' : '320px';
-
-    // 曜日ヘッダー行
-    const headerHtml = days.map((d, ci) => {
-      const ds  = d.toISOString().split('T')[0];
-      const isT = ds===todayStr, isTom = ds===tomStr;
-      const bg  = isT ? 'background:#fffbeb' : isTom ? 'background:#fff7ed' : '';
-      const numStyle = isT
-        ? 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#3b82f6;color:white;font-size:11px;font-weight:700'
-        : isTom
-        ? 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#f97316;color:white;font-size:11px;font-weight:700'
-        : 'font-size:13px;font-weight:700;color:'+DAY_COLORS[ci];
-      return `<div style="width:${colWidths[ci].toFixed(2)}%;flex-shrink:0;text-align:center;padding:3px 1px;border-right:1px solid #e5e7eb;border-bottom:2px solid #e5e7eb;box-sizing:border-box;${bg}">
-        <div style="font-size:9px;font-weight:600;color:${DAY_COLORS[ci]}">${DAYS[d.getDay()]}</div>
-        <div style="${numStyle}">${d.getDate()}</div>
-      </div>`;
-    }).join('');
-
-    // データ行
-    const cellsHtml = days.map((d, ci) => {
-      const ds   = d.toISOString().split('T')[0];
-      const isT  = ds===todayStr, isTom = ds===tomStr;
-      const bg   = isT ? '#fffbeb' : isTom ? '#fff7ed' : '#fff';
-      const shifts = (map[ds]||[]).sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
-
-      const slotMap = {morning:[],afternoon:[],night:[]};
-      shifts.forEach(s => slotMap[getSlot(s.start_time)].push(s));
-      let badges = '';
-      SLOTS.forEach(({key,mark,hc}) => {
-        if (!slotMap[key].length) return;
-        badges += `<div style="font-size:8px;color:${hc};font-weight:800;line-height:1.4;white-space:nowrap;overflow:hidden;letter-spacing:0.02em">${mark}</div>`;
-        slotMap[key].forEach(s => {
-          const color = s.calendar_color||'#4f8ef7';
-          const safeS = encodeURIComponent(JSON.stringify(s));
-          badges += `<div style="display:flex;align-items:center;gap:1px;overflow:hidden;cursor:pointer;padding-left:2px"
-            onclick="event.stopPropagation();showDetail(decodeURIComponent('${safeS}'))">
-            <span style="font-size:8px;flex-shrink:0">${getActivityEmoji(s)}</span>
-            <span style="font-size:9px;font-weight:600;color:${color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.user_name)}</span>
-          </div>`;
-        });
-      });
-
-      const cellOverflow = (isT||isTom) ? 'overflow-y:auto;-webkit-overflow-scrolling:touch' : 'overflow:hidden';
-      const locBadge2 = locationCountHtml(shifts);
-      return `<div style="width:${colWidths[ci].toFixed(2)}%;flex-shrink:0;background:${bg};border-right:1px solid #e5e7eb;box-sizing:border-box;padding:0;${cellOverflow};cursor:pointer;min-height:240px;position:relative"
-        onclick="openDayView('${ds}')">
-        <div style="position:absolute;inset:0;z-index:0"></div>
-        <div style="position:relative;z-index:1;padding:2px 1px;display:flex;flex-direction:column;min-height:240px;pointer-events:auto;box-sizing:border-box">
-          ${calNoteBadgeHtml(ds)}
-          ${badges}
-          ${locBadge2}
-        </div>
-      </div>`;
-    }).join('');
-
-    html += `<div style="background:white;border-radius:12px;border:1px solid ${borderColor};overflow:hidden">
-      <div style="background:${headBg};padding:2px 8px;font-size:11px;color:${labelColor};font-weight:${labelWeight}">${weekLabel}</div>
-      <div style="display:flex;width:100%;border-top:1px solid #e5e7eb">${headerHtml}</div>
-      <div style="display:flex;width:100%;border-bottom:1px solid #e5e7eb;max-height:${cellMaxH};overflow-y:auto;-webkit-overflow-scrolling:touch">${cellsHtml}</div>
-    </div>`;
-  });
-
-  html += '</div>';
-  return html;
 }
 
 // ============================================================
@@ -2073,26 +1914,8 @@ function showAdminMsg(msg, type) {
 // ============================================================
 // ナビ操作
 // ============================================================
-function navPrev() {
-  if (State.viewMode === 'week') changeWeek(-1);
-  else changeMonth(-1);
-}
-function navNext() {
-  if (State.viewMode === 'week') changeWeek(1);
-  else changeMonth(1);
-}
-
-function changeWeek(delta) {
-  State.weekOffset += delta;
-  // 表示範囲の月をState.currentYear/currentMonthに同期（先頭週の月を基準）
-  const range = getWeekViewRange();
-  const mid = new Date(range.startDate);
-  mid.setDate(mid.getDate() + 7); // 2週目先頭を基準月に
-  State.currentYear  = mid.getFullYear();
-  State.currentMonth = mid.getMonth() + 1;
-  updateMonthLabel();
-  App.loadAndRenderShifts();
-}
+function navPrev() { changeMonth(-1); }
+function navNext() { changeMonth(1); }
 
 function changeMonth(delta) {
   State.currentMonth += delta;
@@ -2106,7 +1929,6 @@ function goToToday() {
   const now = new Date();
   State.currentYear  = now.getFullYear();
   State.currentMonth = now.getMonth() + 1;
-  State.weekOffset   = 0;
   updateMonthLabel();
   App.loadAndRenderShifts();
 }
@@ -2133,7 +1955,6 @@ function openTodayDetail() {
   if (State.currentYear !== ty || State.currentMonth !== tm) {
     State.currentYear  = ty;
     State.currentMonth = tm;
-    State.weekOffset   = 0;
     updateMonthLabel();
     App.loadAndRenderShifts().then(() => openDayView(todayStr));
   } else {
@@ -2143,7 +1964,6 @@ function openTodayDetail() {
 
 function setViewMode(mode) {
   State.viewMode = mode;
-  if (mode === 'week') State.weekOffset = 0;
   if (mode === 'quick') State.selectedDate = new Date().toISOString().split('T')[0];
   updateViewBtns();
   updateMonthLabel();
