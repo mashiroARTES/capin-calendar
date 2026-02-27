@@ -51,7 +51,8 @@ const State = {
   guestMode: false,
   calendars: [],
   shifts: [],
-  dayNotes: {},   // { 'YYYY-MM-DD': { content, updated_by_name, updated_at } }
+  dayNotes: {},    // { 'YYYY-MM-DD': { content, updated_by_name, updated_at } }
+  sosBadges: [],   // [ { id, badge_date, calendar_id, activity_type, message, ... } ]
   currentCalendarSlug: null,
   currentYear:  new Date().getFullYear(),
   currentMonth: new Date().getMonth() + 1,
@@ -129,23 +130,29 @@ const App = {
     const fetchMonth = (fy, fm) => {
       let p = '/shifts?year='+fy+'&month='+fm;
       if (slug) p += '&calendar='+slug;
-      return Promise.all([API.get(p), API.get('/day-notes?year='+fy+'&month='+fm)]);
+      return Promise.all([
+        API.get(p),
+        API.get('/day-notes?year='+fy+'&month='+fm),
+        API.get('/sos-badges?year='+fy+'&month='+fm)
+      ]);
     };
 
     const results = await Promise.all(months.map(([fy,fm]) => fetchMonth(fy,fm)));
 
     State.shifts = [];
     State.dayNotes = {};
-    results.forEach(([rShifts, rNotes]) => {
+    State.sosBadges = [];
+    results.forEach(([rShifts, rNotes, rSos]) => {
       if (rShifts.ok) State.shifts = State.shifts.concat(rShifts.data.shifts || []);
       if (rNotes.ok) (rNotes.data.notes || []).forEach(n => { State.dayNotes[n.note_date] = n; });
+      if (rSos.ok)   State.sosBadges = State.sosBadges.concat(rSos.data.badges || []);
     });
 
     State.loading = false;
     renderContent();
   },
   async logout() {
-    API.removeToken(); State.user = null; State.shifts = []; State.dayNotes = {}; State.guestMode = false;
+    API.removeToken(); State.user = null; State.shifts = []; State.dayNotes = {}; State.sosBadges = []; State.guestMode = false;
     showToast('ログアウトしました', 'info');
     this.showLogin();
   },
@@ -565,6 +572,37 @@ function getLocationLabel(s) {
   return s.calendar_name || '';
 }
 
+// ============================================================
+// SOS バッジ ヘルパー
+// ============================================================
+
+// 指定日の SOSバッジ一覧を返す
+function getSosBadgesForDate(dateStr) {
+  return (State.sosBadges || []).filter(b => b.badge_date === dateStr);
+}
+
+// SOSバッジの表示HTML（コンパクト版 - カレンダーセル内用）
+function sosBadgeChipHtml(badge) {
+  const at = ACTIVITY_TYPES[badge.activity_type] || ACTIVITY_TYPES.other_animal;
+  const color = badge.calendar_color || '#9ca3af';
+  const title = escHtml(badge.calendar_name || '') + ' ' + escHtml(at.label) + (badge.message ? '：' + escHtml(badge.message) : '');
+  return '<span title="' + title + '" style="display:inline-flex;align-items:center;gap:2px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:4px;padding:1px 4px;font-size:9px;font-weight:800;color:#dc2626;white-space:nowrap;cursor:default">'
+    + '<span style="font-size:10px">🆘</span>'
+    + '<span style="color:' + color + ';font-size:8px">●</span>'
+    + escHtml(at.emoji) + ' '
+    + escHtml((badge.calendar_name||'').slice(0,3))
+    + '</span>';
+}
+
+// 日のSOSバッジHTMLをまとめて返す（カレンダーセル下部用）
+function sosBadgesRowHtml(dateStr) {
+  const badges = getSosBadgesForDate(dateStr);
+  if (!badges.length) return '';
+  return '<div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px">'
+    + badges.map(sosBadgeChipHtml).join('')
+    + '</div>';
+}
+
 // 場所×活動内容別登録人数バッジHTML（セル最下部用）
 // 例: ●第1猫3 ●第1犬4 ●第2猫2
 function locationCountHtml(shifts) {
@@ -793,17 +831,37 @@ function buildQuickDetail(selDate, map) {
         `<i class="fas fa-plus"></i>この日にシフトを登録</button>`
     : '';
 
-  return `<div>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px 4px;border-bottom:1px solid #e5e7eb;background:#fff;position:sticky;top:0;z-index:1">
-      <span style="font-size:14px;font-weight:800;color:${isToday?'#1d4ed8':'#1f2937'}">${dateLabel}</span>
-      <span style="font-size:12px;color:#9ca3af">${dayShifts.length}名参加</span>
-    </div>
-    ${noteHtml}
-    ${summaryHtml}
-    ${slotsHtml}
-    ${emptyHtml}
-    ${addBtn}
-  </div>`;
+  // SOS バッジ（その日の人手不足マーク）
+  const sosBadges = getSosBadgesForDate(sd);
+  const sosHtml = sosBadges.length
+    ? '<div style="margin:4px 10px 2px;padding:6px 10px;background:#fef2f2;border-radius:8px;border-left:3px solid #f87171">'
+      + '<div style="font-size:11px;font-weight:800;color:#dc2626;margin-bottom:4px"><span style="font-size:13px">🆘</span> 人手不足アラート</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:4px">'
+      + sosBadges.map(function(b) {
+          const at = ACTIVITY_TYPES[b.activity_type] || ACTIVITY_TYPES.other_animal;
+          return '<div style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;padding:3px 8px">'
+            + '<span style="color:' + (b.calendar_color||'#9ca3af') + ';font-size:10px">●</span>'
+            + '<span style="font-size:12px">' + at.emoji + '</span>'
+            + '<span style="font-size:12px;font-weight:700;color:#1f2937">' + escHtml(b.calendar_name||'') + '</span>'
+            + '<span style="font-size:11px;font-weight:600;color:#dc2626">' + escHtml(at.label.replace(/^[^\s]+\s/,'')) + '</span>'
+            + (b.message ? '<span style="font-size:10px;color:#6b7280">(' + escHtml(b.message) + ')</span>' : '')
+            + '</div>';
+        }).join('')
+      + '</div></div>'
+    : '';
+
+  return '<div>'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px 4px;border-bottom:1px solid #e5e7eb;background:#fff;position:sticky;top:0;z-index:1">'
+    + '<span style="font-size:14px;font-weight:800;color:' + (isToday?'#1d4ed8':'#1f2937') + '">' + dateLabel + '</span>'
+    + '<span style="font-size:12px;color:#9ca3af">' + dayShifts.length + '名参加</span>'
+    + '</div>'
+    + sosHtml
+    + noteHtml
+    + summaryHtml
+    + slotsHtml
+    + emptyHtml
+    + addBtn
+    + '</div>';
 }
 
 // クイックビューで日付を選択（全体再描画）
@@ -942,6 +1000,7 @@ function renderMonthView() {
       const overflowStyle = (isToday || isTomorrow) ? 'overflow-y:auto;-webkit-overflow-scrolling:touch' : 'overflow:hidden';
 
       const locBadge = locationCountHtml(dayShifts);
+      const sosBadgeRow = sosBadgesRowHtml(ds);
 
       rowHtml += `<div style="width:${w}%;flex-shrink:0;height:${rowH}px;background:${bg};border-right:${borderR};border-bottom:${borderB};box-sizing:border-box;padding:0;${overflowStyle};cursor:pointer;vertical-align:top;position:relative"
         onclick="openDayView('${ds}')">
@@ -949,6 +1008,7 @@ function renderMonthView() {
         <div style="position:relative;z-index:1;padding:2px 1px;display:flex;flex-direction:column;min-height:${rowH}px;pointer-events:auto;box-sizing:border-box">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1px">${dayLabel}${cntLabel}</div>
           ${calNoteBadgeHtml(ds)}
+          ${sosBadgeRow}
           ${badges}
           ${locBadge}
         </div>
@@ -1843,44 +1903,154 @@ async function saveProfileName() {
 async function openAdminModal() {
   if (!State.user || State.user.role !== 'admin') return;
 
-  document.getElementById('modal-root').innerHTML = `
-  <div class="modal-overlay" onclick="closeModalOuter(event)">
-    <div class="modal-content" onclick="event.stopPropagation()" style="max-width:560px">
-      <div class="flex items-center justify-between mb-5">
-        <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-shield-alt text-red-500 mr-2"></i>管理者パネル</h3>
-        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 p-1"><i class="fas fa-times"></i></button>
-      </div>
-      <div id="admin-msg" class="hidden mb-3 p-3 rounded-lg text-sm"></div>
+  // カレンダー選択肢
+  const calOptions = State.calendars.map(c =>
+    '<option value="' + c.id + '">' + escHtml(c.name) + '</option>'
+  ).join('');
 
-      <!-- メールで管理者昇格 -->
-      <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">
-        <h4 class="text-sm font-semibold text-red-700 mb-2"><i class="fas fa-user-shield mr-1"></i>メールアドレスで権限変更</h4>
-        <div class="flex gap-2">
-          <input type="email" id="admin-email-input" placeholder="対象ユーザーのメールアドレス"
-            class="flex-1 border border-red-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400">
-          <select id="admin-role-select" class="border border-red-200 rounded-lg px-3 py-2 text-sm">
-            <option value="admin">管理者にする</option>
-            <option value="volunteer">一般に戻す</option>
-          </select>
-        </div>
-        <button onclick="adminPromoteByEmail()"
-          class="mt-2 w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg text-sm font-semibold transition-colors">
-          権限を変更する
-        </button>
-      </div>
+  // 活動内容選択肢
+  const actOptions = Object.entries(ACTIVITY_TYPES).map(([k,v]) =>
+    '<option value="' + k + '">' + v.emoji + ' ' + escHtml(v.label.replace(/^[^ ]+ /,'')) + '</option>'
+  ).join('');
 
-      <!-- ユーザー一覧 -->
-      <div>
-        <h4 class="text-sm font-semibold text-gray-700 mb-2"><i class="fas fa-users mr-1"></i>ユーザー一覧</h4>
-        <div id="admin-user-list" class="space-y-1.5 max-h-60 overflow-y-auto">
-          <div class="flex items-center justify-center py-4"><div class="spinner w-5 h-5"></div></div>
-        </div>
-      </div>
-    </div>
-  </div>`;
+  // 今日の日付をデフォルト値に
+  const todayStr = todayLocal();
 
-  // ユーザー一覧ロード
+  document.getElementById('modal-root').innerHTML =
+  '<div class="modal-overlay" onclick="closeModalOuter(event)">'
+  + '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:580px">'
+  + '<div class="flex items-center justify-between mb-4">'
+  + '<h3 class="text-lg font-bold text-gray-800"><i class="fas fa-shield-alt text-red-500 mr-2"></i>管理者パネル</h3>'
+  + '<button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 p-1"><i class="fas fa-times"></i></button>'
+  + '</div>'
+  + '<div id="admin-msg" class="hidden mb-3 p-3 rounded-lg text-sm"></div>'
+
+  // ── SOS バッジ管理 ──────────────────────────────────────
+  + '<div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">'
+  + '<h4 class="text-sm font-semibold text-red-700 mb-3"><span class="text-base">🆘</span> 人手不足SOSマーク設定</h4>'
+  + '<div class="grid grid-cols-1 gap-2">'
+  + '<div class="flex gap-2 items-center">'
+  + '<label class="text-xs text-gray-600 w-10 flex-shrink-0">日付</label>'
+  + '<input type="date" id="sos-date" value="' + todayStr + '" class="flex-1 border border-red-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300">'
+  + '</div>'
+  + '<div class="flex gap-2 items-center">'
+  + '<label class="text-xs text-gray-600 w-10 flex-shrink-0">場所</label>'
+  + '<select id="sos-calendar" class="flex-1 border border-red-200 rounded-lg px-3 py-1.5 text-sm">' + calOptions + '</select>'
+  + '</div>'
+  + '<div class="flex gap-2 items-center">'
+  + '<label class="text-xs text-gray-600 w-10 flex-shrink-0">活動</label>'
+  + '<select id="sos-activity" class="flex-1 border border-red-200 rounded-lg px-3 py-1.5 text-sm">' + actOptions + '</select>'
+  + '</div>'
+  + '<div class="flex gap-2 items-center">'
+  + '<label class="text-xs text-gray-600 w-10 flex-shrink-0">コメント</label>'
+  + '<input type="text" id="sos-message" maxlength="50" placeholder="例：あと2名必要（任意）" class="flex-1 border border-red-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300">'
+  + '</div>'
+  + '</div>'
+  + '<button onclick="adminAddSos()" class="mt-3 w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg text-sm font-semibold transition-colors">'
+  + '<i class="fas fa-exclamation-triangle mr-1"></i>SOSマークをつける</button>'
+  + '</div>'
+
+  // ── 現在のSOS一覧 ──────────────────────────────────────
+  + '<div class="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-4">'
+  + '<h4 class="text-sm font-semibold text-orange-700 mb-2"><i class="fas fa-list mr-1"></i>今月のSOSマーク一覧</h4>'
+  + '<div id="sos-list" class="space-y-1.5 max-h-44 overflow-y-auto">'
+  + '<div class="flex items-center justify-center py-3"><div class="spinner w-4 h-4"></div></div>'
+  + '</div>'
+  + '</div>'
+
+  // ── 権限変更 ──────────────────────────────────────────
+  + '<div class="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">'
+  + '<h4 class="text-sm font-semibold text-gray-700 mb-2"><i class="fas fa-user-shield mr-1"></i>メールアドレスで権限変更</h4>'
+  + '<div class="flex gap-2">'
+  + '<input type="email" id="admin-email-input" placeholder="対象ユーザーのメールアドレス" class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400">'
+  + '<select id="admin-role-select" class="border border-gray-200 rounded-lg px-3 py-2 text-sm">'
+  + '<option value="admin">管理者にする</option>'
+  + '<option value="volunteer">一般に戻す</option>'
+  + '</select>'
+  + '</div>'
+  + '<button onclick="adminPromoteByEmail()" class="mt-2 w-full bg-gray-700 hover:bg-gray-800 text-white py-2 rounded-lg text-sm font-semibold transition-colors">権限を変更する</button>'
+  + '</div>'
+
+  // ── ユーザー一覧 ──────────────────────────────────────
+  + '<div>'
+  + '<h4 class="text-sm font-semibold text-gray-700 mb-2"><i class="fas fa-users mr-1"></i>ユーザー一覧</h4>'
+  + '<div id="admin-user-list" class="space-y-1.5 max-h-44 overflow-y-auto">'
+  + '<div class="flex items-center justify-center py-4"><div class="spinner w-5 h-5"></div></div>'
+  + '</div>'
+  + '</div>'
+
+  + '</div></div>';
+
+  // 非同期でリスト類をロード
   loadAdminUserList();
+  loadAdminSosList();
+}
+
+// SOS一覧をロードしてUIに表示
+async function loadAdminSosList() {
+  const el = document.getElementById('sos-list');
+  if (!el) return;
+  const y = State.currentYear;
+  const m = State.currentMonth;
+  const r = await API.get('/sos-badges?year=' + y + '&month=' + m);
+  if (!r.ok) { el.innerHTML = '<p class="text-xs text-red-500">SOS一覧取得に失敗しました</p>'; return; }
+  const badges = r.data.badges || [];
+  if (badges.length === 0) {
+    el.innerHTML = '<p class="text-xs text-gray-400">今月のSOSマークはありません</p>';
+    return;
+  }
+  el.innerHTML = badges.map(function(b) {
+    const at = ACTIVITY_TYPES[b.activity_type] || ACTIVITY_TYPES.other_animal;
+    return '<div class="flex items-center gap-2 bg-white border border-red-100 rounded-lg px-3 py-2">'
+      + '<span class="text-sm">🆘</span>'
+      + '<span class="w-2 h-2 rounded-full flex-shrink-0" style="background:' + (b.calendar_color||'#9ca3af') + '"></span>'
+      + '<div class="flex-1 min-w-0">'
+      + '<div class="text-xs font-bold text-gray-800">' + escHtml(b.badge_date) + ' ' + escHtml(b.calendar_name||'') + ' ' + at.emoji + ' ' + escHtml(at.label.replace(/^[^ ]+ /,'')) + '</div>'
+      + (b.message ? '<div class="text-xs text-gray-500">' + escHtml(b.message) + '</div>' : '')
+      + '</div>'
+      + '<button onclick="adminDeleteSos(' + b.id + ')" class="text-red-400 hover:text-red-600 text-xs p-1" title="削除"><i class="fas fa-trash"></i></button>'
+      + '</div>';
+  }).join('');
+}
+
+// SOS バッジ追加
+async function adminAddSos() {
+  const dateEl = document.getElementById('sos-date');
+  const calEl  = document.getElementById('sos-calendar');
+  const actEl  = document.getElementById('sos-activity');
+  const msgEl  = document.getElementById('sos-message');
+  if (!dateEl || !calEl || !actEl) return;
+  const badge_date   = dateEl.value;
+  const calendar_id  = parseInt(calEl.value);
+  const activity_type = actEl.value;
+  const message       = msgEl ? msgEl.value.trim() : '';
+  if (!badge_date) { showAdminMsg('日付を入力してください', 'error'); return; }
+  const r = await API.post('/sos-badges', { badge_date, calendar_id, activity_type, message });
+  if (r.ok) {
+    showAdminMsg('SOSマークを設定しました', 'success');
+    // State も更新
+    State.sosBadges = State.sosBadges.filter(b =>
+      !(b.badge_date === badge_date && b.calendar_id === calendar_id && b.activity_type === activity_type)
+    );
+    State.sosBadges.push(r.data.badge);
+    loadAdminSosList();
+    renderContent();
+  } else {
+    showAdminMsg(r.data.error || 'SOSマークの設定に失敗しました', 'error');
+  }
+}
+
+// SOS バッジ削除
+async function adminDeleteSos(id) {
+  const r = await API.delete('/sos-badges/' + id);
+  if (r.ok) {
+    showAdminMsg('SOSマークを削除しました', 'success');
+    State.sosBadges = State.sosBadges.filter(b => b.id !== id);
+    loadAdminSosList();
+    renderContent();
+  } else {
+    showAdminMsg(r.data.error || '削除に失敗しました', 'error');
+  }
 }
 
 async function loadAdminUserList() {

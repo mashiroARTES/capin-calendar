@@ -9,6 +9,7 @@ import shiftsRoutes from './routes/shifts'
 import calendarsRoutes from './routes/calendars'
 import usersRoutes from './routes/users'
 import dayNotesRoutes from './routes/dayNotes'
+import sosBadgesRoutes from './routes/sosBadges'
 import type { Bindings, Variables } from './types'
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -25,6 +26,7 @@ app.route('/api/shifts', shiftsRoutes)
 app.route('/api/calendars', calendarsRoutes)
 app.route('/api/users', usersRoutes)
 app.route('/api/day-notes', dayNotesRoutes)
+app.route('/api/sos-badges', sosBadgesRoutes)
 
 app.get('/api/health', (c) => c.json({ status: 'ok', app: 'CAPINカレンダー' }))
 app.use('/static/*', serveStatic({ root: './' }))
