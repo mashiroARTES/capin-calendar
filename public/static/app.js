@@ -788,37 +788,12 @@ function buildQuickDetail(selDate, map) {
   const isToday = sd === today;
   const dateLabel = `${dObj.getMonth()+1}月${dObj.getDate()}日（${DN[dObj.getDay()]}）` + (isToday ? ' 今日' : '');
 
-  // 場所×活動 別人数サマリー
-  const actLabel = t => t==='dog'?'犬':t==='cat'?'猫':null;
+  // 場所 × 活動内容 × 時間帯 の3項目掛け合わせ人数バッジ
   const shortLoc = label => {
     const mm = label.match(/第(\d+|[１２３４５６７８９０]+)/);
     if (mm) return '第'+mm[1].replace(/[１２３４５６７８９０]/g,c=>'０１２３４５６７８９'.indexOf(c));
     return label.slice(0,3);
   };
-  const key2 = {};
-  dayShifts.forEach(s => {
-    const al = actLabel(s.activity_type||s.animal_type||'');
-    if (!al) return;
-    const loc   = getLocationLabel(s)||'未設定';
-    const color = s.calendar_color||'#9ca3af';
-    const k     = loc+'__'+al;
-    if (!key2[k]) key2[k] = {short:shortLoc(loc),al,color,count:0};
-    key2[k].count++;
-  });
-  const summaryHtml = Object.values(key2).length
-    ? '<div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px 4px">' +
-      Object.values(key2).map(function({short,al,color,count}) {
-        return '<span style="display:inline-flex;align-items:center;gap:2px;background:#f3f4f6;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700;color:#374151">'
-          + '<span style="color:'+color+';font-size:10px">●</span>'+escHtml(short)+escHtml(al)+'<span style="color:#3b82f6;margin-left:1px">'+count+'</span></span>';
-      }).join('') + '</div>'
-    : '';
-
-  // 時間帯別人数バッジ（朝/昼/夜 × 合計人数）
-  const slotCountDef = [
-    {key:'morning',  label:'朝', hc:'#d97706', bg:'#fffbeb', bc:'#fde68a'},
-    {key:'afternoon',label:'昼', hc:'#059669', bg:'#ecfdf5', bc:'#a7f3d0'},
-    {key:'night',    label:'夜', hc:'#4f46e5', bg:'#eef2ff', bc:'#c7d2fe'},
-  ];
   const slotGetFn = t => {
     if (!t) return 'night';
     const h = parseInt(t.slice(0,2),10);
@@ -826,20 +801,48 @@ function buildQuickDetail(selDate, map) {
     if (h>=12&&h<17) return 'afternoon';
     return 'night';
   };
-  const slotCountMap = {morning:0, afternoon:0, night:0};
-  dayShifts.forEach(s => { slotCountMap[slotGetFn(s.start_time)]++; });
-  const slotCountHtml = slotCountDef.some(({key}) => slotCountMap[key] > 0)
-    ? '<div style="display:flex;gap:4px;padding:2px 10px 6px">'
-      + slotCountDef.map(function({key,label,hc,bg,bc}) {
-          const n = slotCountMap[key];
-          if (!n) return '';
-          return '<span style="display:inline-flex;align-items:center;gap:3px;background:'+bg+';border:1.5px solid '+bc+';border-radius:6px;padding:2px 7px;font-size:12px;font-weight:700">'
-            + '<span style="color:'+hc+';font-size:11px;font-weight:800">'+label+'</span>'
-            + '<span style="color:#1f2937">'+n+'</span>'
+  const SLOT_STYLE = {
+    morning:   {label:'朝', hc:'#d97706', bg:'#fffbeb', bc:'#fde68a'},
+    afternoon: {label:'昼', hc:'#059669', bg:'#ecfdf5', bc:'#a7f3d0'},
+    night:     {label:'夜', hc:'#4f46e5', bg:'#eef2ff', bc:'#c7d2fe'},
+  };
+  const SLOT_ORDER = ['morning','afternoon','night'];
+  // 集計: キー = 場所__actKey__slotKey
+  const triMap = {};
+  dayShifts.forEach(s => {
+    const loc      = getLocationLabel(s) || '未設定';
+    const calColor = s.calendar_color || '#9ca3af';
+    const actKey   = s.activity_type || s.animal_type || 'other_custom';
+    const slotKey  = slotGetFn(s.start_time);
+    const k = loc + '__' + actKey + '__' + slotKey;
+    if (!triMap[k]) triMap[k] = {short: shortLoc(loc), calColor, actKey, slotKey, count: 0};
+    triMap[k].count++;
+  });
+  // 表示順: 場所→活動→時間帯
+  const triEntries = Object.values(triMap).sort((a,b) => {
+    if (a.short !== b.short) return a.short < b.short ? -1 : 1;
+    if (a.actKey !== b.actKey) return a.actKey < b.actKey ? -1 : 1;
+    return SLOT_ORDER.indexOf(a.slotKey) - SLOT_ORDER.indexOf(b.slotKey);
+  });
+  const summaryHtml = triEntries.length
+    ? '<div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px 6px">'
+      + triEntries.map(function(e) {
+          const at = ACTIVITY_TYPES[e.actKey] || ACTIVITY_TYPES.other_custom;
+          const ss = SLOT_STYLE[e.slotKey];
+          return '<span style="display:inline-flex;align-items:center;gap:2px;'
+            + 'background:'+ss.bg+';border:1.5px solid '+ss.bc+';'
+            + 'border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700;color:#374151;white-space:nowrap">'
+            + '<span style="color:'+e.calColor+';font-size:9px">●</span>'
+            + '<span style="font-size:11px">'+at.emoji+'</span>'
+            + '<span style="color:'+ss.hc+';font-size:11px;font-weight:800">'+ss.label+'</span>'
+            + escHtml(e.short)
+            + '<span style="color:#3b82f6;margin-left:2px">'+e.count+'</span>'
             + '</span>';
         }).join('')
       + '</div>'
     : '';
+  // 旧バッジ変数を空にして差し込み位置を保持
+  const slotCountHtml = '';
 
   // メモ表示（3行まで）
   const note     = State.dayNotes[sd];
