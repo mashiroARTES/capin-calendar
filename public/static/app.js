@@ -878,16 +878,15 @@ function buildQuickDetail(selDate, map) {
       const color  = s.calendar_color||'#4f8ef7';
       const emoji  = getActivityEmoji(s);
       const isMine = State.user && s.user_id === State.user.id;
-      return `<div onclick="event.stopPropagation();showDetailById(s.id)"
-        style="display:inline-flex;align-items:center;gap:4px;` +
-        `background:${isMine?'#eff6ff':'#fff'};` +
-        `border:1.5px solid ${isMine?'#93c5fd':'#e5e7eb'};` +
-        `border-radius:20px;padding:4px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0;` +
-        `-webkit-tap-highlight-color:transparent">` +
-        `<span style="font-size:12px">${emoji}</span>` +
-        `<span style="font-size:13px;font-weight:${isMine?'700':'500'};color:${isMine?'#1d4ed8':color}">${escHtml(s.user_name)}</span>` +
-        (s.start_time ? `<span style="font-size:10px;color:#9ca3af">${s.start_time.slice(0,5)}</span>` : '') +
-        `</div>`;
+      const sid    = s.id;
+      return '<div onclick="event.stopPropagation();showDetailById(' + sid + ')" style="display:inline-flex;align-items:center;gap:4px;'
+        + 'background:' + (isMine?'#eff6ff':'#fff') + ';'
+        + 'border:1.5px solid ' + (isMine?'#93c5fd':'#e5e7eb') + ';'
+        + 'border-radius:20px;padding:4px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent">'
+        + '<span style="font-size:12px">' + emoji + '</span>'
+        + '<span style="font-size:13px;font-weight:' + (isMine?'700':'500') + ';color:' + (isMine?'#1d4ed8':color) + '">' + escHtml(s.user_name) + '</span>'
+        + (s.start_time ? '<span style="font-size:10px;color:#9ca3af">' + s.start_time.slice(0,5) + '</span>' : '')
+        + '</div>';
     }).join('');
     return `<div style="padding:4px 10px 6px">
       <div style="font-size:11px;font-weight:800;color:${hc};margin-bottom:4px;letter-spacing:0.03em">${label}</div>
@@ -1080,11 +1079,11 @@ function renderMonthView() {
         badges += `<div style="font-size:8px;color:${hc};font-weight:800;line-height:1.4;overflow:hidden;white-space:nowrap;letter-spacing:0.02em">${mark}</div>`;
         slotMap[key].forEach(s => {
           const color = s.calendar_color||'#4f8ef7';
-          badges += `<div style="display:flex;align-items:center;gap:1px;overflow:hidden;cursor:pointer;padding-left:2px"
-            onclick="event.stopPropagation();showDetailById(s.id)">
-            <span style="font-size:8px;flex-shrink:0">${getActivityEmoji(s)}</span>
-            <span style="font-size:9px;font-weight:600;color:${color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.user_name)}</span>
-          </div>`;
+          badges += '<div style="display:flex;align-items:center;gap:1px;overflow:hidden;cursor:pointer;padding-left:2px"'
+            + ' onclick="event.stopPropagation();showDetailById(' + s.id + ')">'
+            + '<span style="font-size:8px;flex-shrink:0">' + getActivityEmoji(s) + '</span>'
+            + '<span style="font-size:9px;font-weight:600;color:' + color + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(s.user_name) + '</span>'
+            + '</div>';
         });
       });
 
@@ -1178,10 +1177,16 @@ function renderListView() {
           </div>
         </div>
         ${(isMine || isAdmin) ? `
-        <button onclick="event.stopPropagation();deleteShift(${s.id})"
-          class="text-red-300 hover:text-red-500 text-xs p-1 flex-shrink-0 transition-colors">
-          <i class="fas fa-trash"></i>
-        </button>` : ''}
+        <div class="flex gap-1 flex-shrink-0">
+          <button onclick="event.stopPropagation();openEditFormById(${s.id})"
+            class="text-blue-300 hover:text-blue-500 text-xs p-1 transition-colors" title="編集">
+            <i class="fas fa-edit"></i>
+          </button>
+          <button onclick="event.stopPropagation();deleteShift(${s.id})"
+            class="text-red-300 hover:text-red-500 text-xs p-1 transition-colors" title="削除">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>` : ''}
       </div>`;
     });
     html += '</div></div>';
