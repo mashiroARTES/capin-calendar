@@ -848,7 +848,7 @@ function buildQuickDetail(selDate, map) {
     const locKey   = getLocationLabel(s) || '（場所未設定）';
     const locLabel = getLocationLabel(s) || '（場所未設定）';
     const calColor = s.calendar_color || '#9ca3af';
-    if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id };
+    if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id, calendarId: s.calendar_id };
     locMap[locKey].shifts.push(s);
   });
   // 常時表示スロット：人がいなくてもlocMapに枠を確保
@@ -857,7 +857,7 @@ function buildQuickDetail(selDate, map) {
       // カレンダー情報をState.calendarsから探す
       const cal = State.calendars.find(c => c.name === locName);
       const calColor = cal ? cal.color : '#9ca3af';
-      locMap[locName] = { label: locName, color: calColor, shifts: [], sortKey: cal ? cal.id : 999 };
+      locMap[locName] = { label: locName, color: calColor, shifts: [], sortKey: cal ? cal.id : 999, calendarId: cal ? cal.id : null };
     }
     // shifts は後でslotActMapに反映するのでここではロケーションだけ確保
     if (!locMap[locName]._alwaysSlots) locMap[locName]._alwaysSlots = [];
@@ -935,8 +935,8 @@ function buildQuickDetail(selDate, map) {
         // スロット指定なし：全スロットのシフトをまとめて1行表示
         const allShifts = [...actData.morning, ...actData.afternoon, ...actData.night, ...actData._noSlot];
         const chips = makeUserChips(allShifts);
-        const emptyChip = allShifts.length === 0
-          ? '<span style="font-size:13px;color:#9ca3af;font-style:italic;padding:3px 8px">（未登録）</span>'
+        const emptyChip = (!isGuest && allShifts.length === 0)
+          ? '<span onclick="event.stopPropagation();openShiftForm(\'' + sd + '\',null,{calendarId:' + (loc.calendarId||'null') + ',activityType:\'' + ak + '\',slot:null})" style="font-size:13px;color:#9ca3af;font-style:italic;padding:3px 8px;cursor:pointer;border-radius:12px;border:1.5px dashed #d1d5db;display:inline-block">＋ 登録する</span>'
           : '';
         innerHtml = '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding-left:2px">'
           + chips + emptyChip + '</div>';
@@ -948,8 +948,8 @@ function buildQuickDetail(selDate, map) {
           // このact×slotが常時表示対象か、またはシフトがあるか
           if (shifts.length === 0 && !alwaysForSlot.has(ak)) return '';
           const chips = makeUserChips(shifts);
-          const emptyChip = shifts.length === 0
-            ? '<span style="font-size:13px;color:#9ca3af;font-style:italic;padding:3px 8px">（未登録）</span>'
+          const emptyChip = (!isGuest && shifts.length === 0)
+            ? '<span onclick="event.stopPropagation();openShiftForm(\'' + sd + '\',null,{calendarId:' + (loc.calendarId||'null') + ',activityType:\'' + ak + '\',slot:\'' + key + '\'})" style="font-size:13px;color:#9ca3af;font-style:italic;padding:3px 8px;cursor:pointer;border-radius:12px;border:1.5px dashed #d1d5db;display:inline-block">＋ 登録する</span>'
             : '';
           return '<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">'
             + '<span style="display:inline-flex;align-items:center;'
@@ -1272,7 +1272,7 @@ function renderListView() {
       const locKey   = getLocationLabel(s) || '（場所未設定）';
       const locLabel = getLocationLabel(s) || '（場所未設定）';
       const calColor = s.calendar_color || '#9ca3af';
-      if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id };
+      if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id, calendarId: s.calendar_id };
       locMap[locKey].shifts.push(s);
     });
     // 常時表示スロット：人がいなくてもlocMapに枠を確保
@@ -1392,7 +1392,7 @@ function renderListView() {
 // ============================================================
 // シフト登録モーダル
 // ============================================================
-function openShiftForm(defaultDate = null, adminOverrideName = null) {
+function openShiftForm(defaultDate = null, adminOverrideName = null, presetOptions = {}) {
   if (State.guestMode || !State.user) {
     showToast('シフトの登録にはログインが必要です', 'error');
     return;
@@ -1400,9 +1400,13 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
   const isAdmin = State.user && State.user.role === 'admin';
   const dateVal = defaultDate || todayLocal();
   const cal = State.calendars;
-  const defaultCalId = State.currentCalendarSlug
-    ? (cal.find(c => c.slug === State.currentCalendarSlug) || cal[0] || {}).id
-    : (cal[0] || {}).id;
+  const defaultCalId = presetOptions.calendarId
+    ? presetOptions.calendarId
+    : State.currentCalendarSlug
+      ? (cal.find(c => c.slug === State.currentCalendarSlug) || cal[0] || {}).id
+      : (cal[0] || {}).id;
+  const presetActivity = presetOptions.activityType || null;
+  const presetSlot     = presetOptions.slot || null;
 
   const activityEntries = Object.entries(ACTIVITY_TYPES);
   const activityBtnsHtml = activityEntries.map(([k,v], i) => `
@@ -1520,11 +1524,29 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
     </div>
   </div>`;
 
-  // 活動内容ボタン初期スタイル
-  const firstAct = activityEntries[0];
-  if (firstAct) {
-    const el = document.getElementById('actb-' + firstAct[0]);
-    if (el) { el.style.borderColor = firstAct[1].color; el.style.background = firstAct[1].bg; }
+  // 活動内容ボタン初期スタイル（presetActivity があればそれを選択）
+  const initActKey = presetActivity || (activityEntries[0] && activityEntries[0][0]);
+  if (initActKey) {
+    // ラジオを切り替え
+    const initRadio = document.querySelector('input[name="activity_type"][value="' + initActKey + '"]');
+    if (initRadio) initRadio.checked = true;
+    // 全ボタンをリセット
+    activityEntries.forEach(([k, v]) => {
+      const ab = document.getElementById('actb-' + k);
+      if (!ab) return;
+      if (k === initActKey) { ab.style.borderColor = v.color; ab.style.background = v.bg; }
+      else { ab.style.borderColor = '#e5e7eb'; ab.style.background = ''; }
+    });
+    if (initActKey === 'other_custom') {
+      const cw = document.getElementById('act-custom-wrap');
+      if (cw) cw.classList.remove('hidden');
+    }
+  }
+  // presetSlot があれば時間帯ボタンを事前選択
+  if (presetSlot) {
+    // morning/afternoon/night → slot-btn- の対応（フォームは morning/noon/evening）
+    const slotBtnKey = presetSlot === 'night' ? 'evening' : presetSlot === 'afternoon' ? 'noon' : 'morning';
+    setTimeout(() => setTimeSlot(slotBtnKey), 0);
   }
 
   // カレンダーオプションのクリック
