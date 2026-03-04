@@ -101,13 +101,14 @@ shifts.post('/', authMiddleware, async (c) => {
       return c.json({ error: '日付の形式が正しくありません (YYYY-MM-DD)' }, 400);
     }
     
-    // 時間フォーマット確認
+    // 時間フォーマット確認（HH:MM または スロットキー morning/afternoon/night/evening を許可）
     const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
-    if (start_time && !timeRegex.test(start_time)) {
-      return c.json({ error: '開始時刻の形式が正しくありません (HH:MM)' }, 400);
+    const validSlotKeys = ['morning', 'afternoon', 'night', 'evening', 'noon'];
+    if (start_time && !timeRegex.test(start_time) && !validSlotKeys.includes(start_time)) {
+      return c.json({ error: '開始時刻の形式が正しくありません' }, 400);
     }
-    if (end_time && !timeRegex.test(end_time)) {
-      return c.json({ error: '終了時刻の形式が正しくありません (HH:MM)' }, 400);
+    if (end_time && !timeRegex.test(end_time) && !validSlotKeys.includes(end_time)) {
+      return c.json({ error: '終了時刻の形式が正しくありません' }, 400);
     }
     
     // カレンダー存在確認
@@ -199,13 +200,14 @@ shifts.put('/:id', authMiddleware, async (c) => {
     const newLocationType = location_type && validLocationTypes.includes(location_type) ? location_type : undefined;
     const newLocationCustom = newLocationType === 'other_location' ? (location_custom || null) : null;
     
-    // 時間フォーマット確認
+    // 時間フォーマット確認（HH:MM または スロットキー morning/afternoon/night/evening を許可）
     const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
-    if (start_time && !timeRegex.test(start_time)) {
-      return c.json({ error: '開始時刻の形式が正しくありません (HH:MM)' }, 400);
+    const validSlotKeys = ['morning', 'afternoon', 'night', 'evening', 'noon'];
+    if (start_time && !timeRegex.test(start_time) && !validSlotKeys.includes(start_time)) {
+      return c.json({ error: '開始時刻の形式が正しくありません' }, 400);
     }
-    if (end_time && !timeRegex.test(end_time)) {
-      return c.json({ error: '終了時刻の形式が正しくありません (HH:MM)' }, 400);
+    if (end_time && !timeRegex.test(end_time) && !validSlotKeys.includes(end_time)) {
+      return c.json({ error: '終了時刻の形式が正しくありません' }, 400);
     }
     
     // ステータス変更は管理者のみ

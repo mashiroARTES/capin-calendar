@@ -789,7 +789,7 @@ function buildQuickDetail(selDate, map) {
     map = {};
     State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date]||[]).push(s); });
   }
-  const dayShifts = (map[sd]||[]).sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
+  const dayShifts = (map[sd]||[]).sort((a,b)=>(a.start_time||'zzz')<(b.start_time||'zzz')?-1:1);
   const isGuest   = State.guestMode || !State.user;
 
   // 日付ヘッダー
@@ -798,95 +798,119 @@ function buildQuickDetail(selDate, map) {
   const isToday = sd === today;
   const dateLabel = `${dObj.getMonth()+1}月${dObj.getDate()}日（${DN[dObj.getDay()]}）` + (isToday ? ' 今日' : '');
 
-  // 時間帯 → 活動内容 → ユーザー名 の3段階グループ表示
+  // ── スロットキー判定（文字列キー or 時刻 どちらにも対応） ──
+  const toSlotKey = t => {
+    if (!t) return 'night';
+    if (t === 'morning')   return 'morning';
+    if (t === 'afternoon' || t === 'noon') return 'afternoon';
+    if (t === 'night' || t === 'evening') return 'night';
+    const h = parseInt(t.slice(0,2),10);
+    if (h>=3&&h<12)  return 'morning';
+    if (h>=12&&h<17) return 'afternoon';
+    return 'night';
+  };
+
+  // 時間帯定義
   const SLOT_DEF = [
     {key:'morning',  label:'朝', hc:'#d97706', bg:'#fffbeb', bc:'#fde68a'},
     {key:'afternoon',label:'昼', hc:'#059669', bg:'#ecfdf5', bc:'#a7f3d0'},
     {key:'night',    label:'夜', hc:'#4f46e5', bg:'#eef2ff', bc:'#c7d2fe'},
   ];
-  const toSlotKey = t => {
-    if (!t) return 'night';
-    const h = parseInt(t.slice(0,2),10);
-    if (h>=3&&h<12) return 'morning';
-    if (h>=12&&h<17) return 'afternoon';
-    return 'night';
-  };
-
-  // スロット×活動でグループ化
-  // structure: slotActMap[slotKey][actKey] = [shift, ...]
-  const slotActMap = {morning:{}, afternoon:{}, night:{}};
-  dayShifts.forEach(s => {
-    const sk  = toSlotKey(s.start_time);
-    const ak  = s.activity_type || s.animal_type || 'other_custom';
-    if (!slotActMap[sk][ak]) slotActMap[sk][ak] = [];
-    slotActMap[sk][ak].push(s);
-  });
-
-  // 活動キーの表示順（ACTIVITY_TYPES定義順）
   const ACT_KEY_ORDER = Object.keys(ACTIVITY_TYPES);
+  const SLOT_LABEL = {morning:'朝', afternoon:'昼', night:'夜'};
 
-  const summaryHtml = SLOT_DEF.map(({key, label, hc, bg, bc}) => {
-    const actGroups = slotActMap[key];
-    const actKeys = ACT_KEY_ORDER.filter(ak => actGroups[ak] && actGroups[ak].length);
-    if (!actKeys.length) return '';
+  // ── 場所グループ化 → 場所内でスロット×活動グループ化 ──
+  const locMap = {};
+  dayShifts.forEach(s => {
+    const locKey   = s.calendar_id + '__' + (s.location_type||'') + '__' + (s.location_custom||'');
+    const locLabel = getLocationLabel(s) || '（場所未設定）';
+    const calColor = s.calendar_color || '#9ca3af';
+    if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id };
+    locMap[locKey].shifts.push(s);
+  });
+  const locEntries = Object.values(locMap).sort((a,b) => a.sortKey - b.sortKey);
 
-    // 各活動グループのHTML
-    const actRowsHtml = actKeys.map(ak => {
-      const at      = ACTIVITY_TYPES[ak] || ACTIVITY_TYPES.other_custom;
-      const shifts  = actGroups[ak];
-      // ユーザーチップ（クリックで詳細表示）
-      const userChips = shifts.map(s => {
-        const isMine   = State.user && s.user_id === State.user.id;
-        const calColor = s.calendar_color || '#4f8ef7';
-        const sid      = s.id;
-        return '<span onclick="event.stopPropagation();showDetailById(' + sid + ')"'
-          + ' style="display:inline-flex;align-items:center;gap:3px;'
-          + 'background:' + (isMine ? '#eff6ff' : '#fff') + ';'
-          + 'border:1.5px solid ' + (isMine ? '#93c5fd' : '#e5e7eb') + ';'
-          + 'border-radius:20px;padding:3px 10px;cursor:pointer;white-space:nowrap;'
-          + '-webkit-tap-highlight-color:transparent">'
-          + '<span style="font-size:13px;color:' + calColor + '">●</span>'
-          + '<span style="font-size:15px;font-weight:' + (isMine ? '700' : '500') + ';'
-          + 'color:' + (isMine ? '#1d4ed8' : '#1f2937') + '">' + escHtml(s.user_name) + '</span>'
-          + (s.start_time ? '<span style="font-size:13px;color:#9ca3af">' + s.start_time.slice(0,5) + '</span>' : '')
-          + '</span>';
+  const summaryHtml = locEntries.map(loc => {
+    // スロット×活動でグループ化
+    const slotActMap = { morning:{}, afternoon:{}, night:{} };
+    loc.shifts.forEach(s => {
+      const sk = toSlotKey(s.start_time);
+      const ak = s.activity_type || s.animal_type || 'other_custom';
+      if (!slotActMap[sk][ak]) slotActMap[sk][ak] = [];
+      slotActMap[sk][ak].push(s);
+    });
+
+    const slotRowsHtml = SLOT_DEF.map(({key, label, hc, bg, bc}) => {
+      const actGroups = slotActMap[key];
+      const actKeys   = ACT_KEY_ORDER.filter(ak => actGroups[ak] && actGroups[ak].length);
+      if (!actKeys.length) return '';
+
+      const actRowsHtml = actKeys.map(ak => {
+        const at     = ACTIVITY_TYPES[ak] || ACTIVITY_TYPES.other_custom;
+        const shifts = actGroups[ak];
+        const userChips = shifts.map(s => {
+          const isMine   = State.user && s.user_id === State.user.id;
+          const calColor = s.calendar_color || '#4f8ef7';
+          const sid      = s.id;
+          // メモを名前右に表示
+          const memoSpan = s.note
+            ? '<span style="font-size:12px;color:#6b7280;margin-left:3px;font-style:italic;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+              + escHtml(s.note) + '</span>'
+            : '';
+          return '<span onclick="event.stopPropagation();showDetailById(' + sid + ')"'
+            + ' style="display:inline-flex;align-items:center;gap:3px;'
+            + 'background:' + (isMine ? '#eff6ff' : '#fff') + ';'
+            + 'border:1.5px solid ' + (isMine ? '#93c5fd' : '#e5e7eb') + ';'
+            + 'border-radius:20px;padding:3px 10px;cursor:pointer;white-space:nowrap;'
+            + '-webkit-tap-highlight-color:transparent">'
+            + '<span style="font-size:15px;font-weight:' + (isMine ? '700' : '500') + ';'
+            + 'color:' + (isMine ? '#1d4ed8' : '#1f2937') + '">' + escHtml(s.user_name) + '</span>'
+            + memoSpan
+            + '</span>';
+        }).join('');
+
+        return '<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:5px">'
+          + '<div style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;'
+          + 'background:' + at.bg + ';border:1.5px solid ' + at.color + '33;'
+          + 'border-radius:6px;padding:3px 8px;min-width:52px;justify-content:center">'
+          + '<span style="font-size:16px">' + at.emoji + '</span>'
+          + '<span style="font-size:13px;font-weight:700;color:' + at.color + '">'
+          + at.label.replace(/^[^\s]+\s/,'') + '</span>'
+          + '</div>'
+          + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + userChips + '</div>'
+          + '</div>';
       }).join('');
 
-      return '<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:5px">'
-        // 活動ラベル（絵文字+テキスト）
-        + '<div style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;'
-        + 'background:' + at.bg + ';border:1.5px solid ' + at.color + '33;'
-        + 'border-radius:6px;padding:3px 8px;min-width:52px;justify-content:center">'
-        + '<span style="font-size:16px">' + at.emoji + '</span>'
-        + '<span style="font-size:13px;font-weight:700;color:' + at.color + '">'
-        + at.label.replace(/^[^\s]+\s/,'') + '</span>'
+      return '<div style="padding:4px 8px 5px;border-bottom:1px solid #f3f4f6">'
+        + '<div style="display:inline-flex;align-items:center;gap:4px;'
+        + 'background:' + bg + ';border:1.5px solid ' + bc + ';'
+        + 'border-radius:8px;padding:2px 10px;margin-bottom:5px">'
+        + '<span style="font-size:15px;font-weight:800;color:' + hc + '">' + label + '</span>'
         + '</div>'
-        // ユーザーチップ群（横並び・折り返し）
-        + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + userChips + '</div>'
+        + actRowsHtml
         + '</div>';
-    }).join('');
+    }).filter(Boolean).join('');
 
-    const timeRange = key==='morning' ? '03:00〜11:59' : key==='afternoon' ? '12:00〜16:59' : '17:00〜02:59';
-
-    return '<div style="padding:5px 10px 6px;border-bottom:1px solid #f3f4f6">'
-      + '<div style="display:inline-flex;align-items:center;gap:5px;'
-      + 'background:' + bg + ';border:1.5px solid ' + bc + ';'
-      + 'border-radius:8px;padding:3px 12px;margin-bottom:6px">'
-      + '<span style="font-size:16px;font-weight:800;color:' + hc + '">' + label + '</span>'
-      + '<span style="font-size:12px;color:' + hc + 'aa">' + timeRange + '</span>'
+    return '<div style="margin:4px 8px 6px;border:1.5px solid ' + loc.color + '44;border-radius:10px;overflow:hidden">'
+      + '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;'
+      + 'background:' + loc.color + '18;border-bottom:1px solid ' + loc.color + '33">'
+      + '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
+      + 'background:' + loc.color + ';flex-shrink:0"></span>'
+      + '<span style="font-size:15px;font-weight:700;color:#1f2937">' + escHtml(loc.label) + '</span>'
+      + '<span style="font-size:12px;color:#9ca3af;margin-left:2px">' + loc.shifts.length + '人</span>'
       + '</div>'
-      + actRowsHtml
+      + slotRowsHtml
       + '</div>';
-  }).filter(Boolean).join('');
+  }).join('');
 
-  // メモ表示（3行まで）
+  // メモ（一言ボード）
   const note     = State.dayNotes[sd];
   const lines    = note && note.content
     ? note.content.split('\n').filter(l => l.trim())
     : [];
   const noteHtml = lines.length
-    ? `<div style="margin:4px 10px 2px;padding:6px 10px;background:#fffbeb;border-radius:8px;border-left:3px solid #f59e0b">` +
-      lines.map(l => `<div style="font-size:16px;color:#92400e;line-height:1.5">📌 ${escHtml(l)}</div>`).join('') +
+    ? `<div style="margin:4px 8px 2px;padding:6px 10px;background:#fffbeb;border-radius:8px;border-left:3px solid #f59e0b">` +
+      lines.map(l => `<div style="font-size:15px;color:#92400e;line-height:1.5">📌 ${escHtml(l)}</div>`).join('') +
       `</div>`
     : '';
 
@@ -902,15 +926,13 @@ function buildQuickDetail(selDate, map) {
         `<i class="fas fa-plus"></i>この日にシフトを登録</button>`
     : '';
 
-  // SOS バッジ（その日の人手不足マーク）
-  // urgent を先に、normal を後に並べる
+  // SOS バッジ
   const sosBadgesRaw = getSosBadgesForDate(sd);
   const sosBadgesSorted = sosBadgesRaw.slice().sort(function(a,b){
     return (a.urgency==='urgent'?0:1) - (b.urgency==='urgent'?0:1);
   });
   const sosHtml = sosBadgesSorted.length
     ? (function() {
-        // urgency ごとにグループ化して別ブロックで表示
         var groups = { urgent: [], normal: [] };
         sosBadgesSorted.forEach(function(b) {
           (groups[b.urgency] || groups.normal).push(b);
@@ -922,12 +944,12 @@ function buildQuickDetail(selDate, map) {
             return '<div style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid ' + st.itemBorder + ';border-radius:8px;padding:3px 8px">'
               + '<span style="color:' + (b.calendar_color||'#9ca3af') + ';font-size:16px">●</span>'
               + '<span style="font-size:16px">' + at.emoji + '</span>'
-              + '<span style="font-size:16px;font-weight:700;color:#1f2937">' + escHtml(b.calendar_name||'') + '</span>'
-              + '<span style="font-size:15px;font-weight:600;color:' + st.titleColor + '">' + escHtml(at.label.replace(/^[^\s]+\s/,'')) + '</span>'
-              + (b.message ? '<span style="font-size:16px;color:#6b7280">(' + escHtml(b.message) + ')</span>' : '')
+              + '<span style="font-size:15px;font-weight:700;color:#1f2937">' + escHtml(b.calendar_name||'') + '</span>'
+              + '<span style="font-size:14px;font-weight:600;color:' + st.titleColor + '">' + escHtml(at.label.replace(/^[^\s]+\s/,'')) + '</span>'
+              + (b.message ? '<span style="font-size:14px;color:#6b7280">(' + escHtml(b.message) + ')</span>' : '')
               + '</div>';
           }).join('');
-          return '<div style="margin:4px 10px 2px;padding:6px 10px;background:' + st.blockBg + ';border-radius:8px;border-left:3px solid ' + st.blockBorder + '">'
+          return '<div style="margin:4px 8px 2px;padding:6px 10px;background:' + st.blockBg + ';border-radius:8px;border-left:3px solid ' + st.blockBorder + '">'
             + '<div style="font-size:15px;font-weight:800;color:' + st.titleColor + ';margin-bottom:4px">'
             + '<span style="font-size:15px">' + st.icon + '</span> ' + st.label + '</div>'
             + '<div style="display:flex;flex-wrap:wrap;gap:4px">' + items + '</div>'
@@ -939,7 +961,7 @@ function buildQuickDetail(selDate, map) {
   return '<div>'
     + '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px 4px;border-bottom:1px solid #e5e7eb;background:#fff;position:sticky;top:0;z-index:1">'
     + '<span style="font-size:16px;font-weight:800;color:' + (isToday?'#1d4ed8':'#1f2937') + '">' + dateLabel + '</span>'
-    + '<span style="font-size:16px;color:#9ca3af">' + dayShifts.length + '名参加</span>'
+    + '<span style="font-size:15px;color:#9ca3af">' + dayShifts.length + '名参加</span>'
     + '</div>'
     + sosHtml
     + noteHtml
@@ -1139,8 +1161,11 @@ function renderListView() {
   ];
   const toSlot = t => {
     if (!t) return 'night';
+    if (t === 'morning')   return 'morning';
+    if (t === 'afternoon' || t === 'noon') return 'afternoon';
+    if (t === 'night' || t === 'evening') return 'night';
     const h = parseInt(t.slice(0,2),10);
-    if (h>=3&&h<12) return 'morning';
+    if (h>=3&&h<12)  return 'morning';
     if (h>=12&&h<17) return 'afternoon';
     return 'night';
   };
@@ -1191,16 +1216,18 @@ function renderListView() {
             const calColor = s.calendar_color || '#4f8ef7';
             const sid      = s.id;
             const timeStr  = s.start_time ? s.start_time.slice(0,5) : '';
+            const memoChip = s.note
+              ? '<span style="font-size:12px;color:#6b7280;margin-left:3px;font-style:italic;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(s.note) + '</span>'
+              : '';
             return '<span onclick="event.stopPropagation();showDetailById(' + sid + ')"'
               + ' style="display:inline-flex;align-items:center;gap:3px;'
               + 'background:' + (isMine ? '#eff6ff' : '#fff') + ';'
               + 'border:1.5px solid ' + (isMine ? '#93c5fd' : '#e5e7eb') + ';'
               + 'border-radius:20px;padding:3px 10px;cursor:pointer;white-space:nowrap;'
               + '-webkit-tap-highlight-color:transparent">'
-              + '<span style="font-size:13px;color:' + calColor + '">●</span>'
               + '<span style="font-size:15px;font-weight:' + (isMine ? '700' : '500') + ';'
               + 'color:' + (isMine ? '#1d4ed8' : '#1f2937') + '">' + escHtml(s.user_name) + '</span>'
-              + (timeStr ? '<span style="font-size:12px;color:#9ca3af">' + timeStr + '</span>' : '')
+              + memoChip
               + '</span>';
           }).join('');
 
@@ -1216,14 +1243,11 @@ function renderListView() {
             + '</div>';
         }).join('');
 
-        const timeRange = key==='morning' ? '03:00〜11:59' : key==='afternoon' ? '12:00〜16:59' : '17:00〜02:59';
-
         return '<div style="padding:4px 10px 5px;border-bottom:1px solid #f3f4f6">'
-          + '<div style="display:inline-flex;align-items:center;gap:5px;'
+          + '<div style="display:inline-flex;align-items:center;gap:4px;'
           + 'background:' + bg + ';border:1.5px solid ' + bc + ';'
           + 'border-radius:8px;padding:2px 10px;margin-bottom:5px">'
           + '<span style="font-size:15px;font-weight:800;color:' + hc + '">' + label + '</span>'
-          + '<span style="font-size:12px;color:' + hc + 'aa">' + timeRange + '</span>'
           + '</div>'
           + actRowsHtml
           + '</div>';
@@ -1350,41 +1374,30 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
             class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
 
-        <!-- 時刻 -->
+        <!-- 時間帯 -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">時間帯</label>
-          <div class="flex gap-2 mb-2">
+          <label class="block text-sm font-medium text-gray-700 mb-2">時間帯 <span class="text-red-500">*</span></label>
+          <div class="flex gap-2">
             <button type="button" onclick="setTimeSlot('morning')"
-              class="flex-1 py-1.5 rounded-lg text-xs font-bold border-2 border-yellow-300 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 transition-colors" id="slot-btn-morning">
-              朝<span class="block text-xs font-normal text-yellow-600">09:00〜12:00</span>
+              class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-yellow-300 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 transition-colors" id="slot-btn-morning">
+              朝
             </button>
             <button type="button" onclick="setTimeSlot('noon')"
-              class="flex-1 py-1.5 rounded-lg text-xs font-bold border-2 border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition-colors" id="slot-btn-noon">
-              昼<span class="block text-xs font-normal text-green-600">12:00〜17:00</span>
+              class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition-colors" id="slot-btn-noon">
+              昼
             </button>
             <button type="button" onclick="setTimeSlot('evening')"
-              class="flex-1 py-1.5 rounded-lg text-xs font-bold border-2 border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors" id="slot-btn-evening">
-              夕<span class="block text-xs font-normal text-indigo-600">17:00〜20:00</span>
+              class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors" id="slot-btn-evening">
+              夕
             </button>
           </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs text-gray-500 mb-1">開始時刻（直接入力も可）</label>
-              <input type="time" id="sf-start"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
-            </div>
-            <div>
-              <label class="block text-xs text-gray-500 mb-1">終了時刻（直接入力も可）</label>
-              <input type="time" id="sf-end"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
-            </div>
-          </div>
+          <input type="hidden" id="sf-slot" value="">
         </div>
 
         <!-- メモ -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">メモ</label>
-          <textarea id="sf-note" rows="2" placeholder="備考・メモ（任意）"
+          <textarea id="sf-note" rows="2" placeholder="時間指定など（例：10時〜）"
             class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"></textarea>
         </div>
 
@@ -1427,20 +1440,19 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
 
   // 時間帯ショートカット
   window.setTimeSlot = function(slot) {
-    const startEl = document.getElementById('sf-start');
-    const endEl   = document.getElementById('sf-end');
-    if (!startEl || !endEl) return;
-    const map = { morning: ['09:00','12:00'], noon: ['12:00','17:00'], evening: ['17:00','20:00'] };
-    const [s, e] = map[slot] || [];
-    if (s) startEl.value = s;
-    if (e) endEl.value   = e;
+    // hidden input に slot 値を保存
+    const slotEl = document.getElementById('sf-slot');
+    if (slotEl) slotEl.value = slot;
+    // slot → internal key (evening->night)
+    const slotKey = slot === 'evening' ? 'night' : slot;
     // ボタンのハイライト切替
     ['morning','noon','evening'].forEach(k => {
       const btn = document.getElementById('slot-btn-' + k);
       if (!btn) return;
       const active = k === slot;
-      btn.style.opacity = active ? '1' : '0.5';
+      btn.style.opacity = active ? '1' : '0.6';
       btn.style.fontWeight = active ? '800' : '';
+      btn.style.transform = active ? 'scale(1.04)' : '';
     });
   };
 
@@ -1469,8 +1481,7 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
     const activity = document.querySelector('input[name="activity_type"]:checked')?.value || 'dog';
     const actCustom = activity === 'other_custom' ? (document.getElementById('sf-act-custom')?.value || null) : null;
     const date  = document.getElementById('sf-date').value;
-    const start = document.getElementById('sf-start').value || null;
-    const end   = document.getElementById('sf-end').value || null;
+    const slot  = document.getElementById('sf-slot').value || null;
     const note  = document.getElementById('sf-note').value || null;
     const overrideName = isAdmin ? (document.getElementById('sf-override-name')?.value?.trim() || null) : null;
 
@@ -1496,8 +1507,8 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
     const payload = {
       calendar_id: calId,
       shift_date: date,
-      start_time: start,
-      end_time: end,
+      start_time: slot,
+      end_time: null,
       note,
       activity_type: activity,
       activity_custom: actCustom,
@@ -1929,15 +1940,23 @@ function openEditForm(shiftStr) {
         <div><label class="block text-sm font-medium text-gray-700 mb-1">日付</label>
           <div class="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2.5">${s.shift_date.replace(/-/g,'/')}</div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div><label class="block text-sm font-medium text-gray-700 mb-1">開始時刻</label>
-            <input type="time" id="ef-start" value="${s.start_time||''}"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">時間帯</label>
+          <div class="flex gap-2">
+            <button type="button" onclick="setEditSlot('morning')"
+              class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-yellow-300 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 transition-colors" id="eslot-btn-morning">
+              朝
+            </button>
+            <button type="button" onclick="setEditSlot('noon')"
+              class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition-colors" id="eslot-btn-noon">
+              昼
+            </button>
+            <button type="button" onclick="setEditSlot('evening')"
+              class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors" id="eslot-btn-evening">
+              夕
+            </button>
           </div>
-          <div><label class="block text-sm font-medium text-gray-700 mb-1">終了時刻</label>
-            <input type="time" id="ef-end" value="${s.end_time||''}"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
-          </div>
+          <input type="hidden" id="ef-slot" value="${s.start_time||''}">
         </div>
         <div><label class="block text-sm font-medium text-gray-700 mb-1">メモ</label>
           <textarea id="ef-note" rows="2"
@@ -1982,19 +2001,42 @@ function openEditForm(shiftStr) {
     });
   });
 
+  // 編集フォーム時間帯ボタン
+  window.setEditSlot = function(slot) {
+    const slotEl = document.getElementById('ef-slot');
+    if (slotEl) slotEl.value = slot;
+    ['morning','noon','evening'].forEach(k => {
+      const btn = document.getElementById('eslot-btn-' + k);
+      if (!btn) return;
+      const active = k === slot;
+      btn.style.opacity = active ? '1' : '0.6';
+      btn.style.fontWeight = active ? '800' : '';
+      btn.style.transform = active ? 'scale(1.04)' : '';
+    });
+  };
+  // 既存のslotを初期ハイライト
+  (function(){
+    const cur = document.getElementById('ef-slot')?.value || '';
+    const slotToBtn = { morning:'morning', afternoon:'noon', night:'evening', noon:'noon', evening:'evening' };
+    const btnKey = slotToBtn[cur];
+    if (btnKey) {
+      const btn = document.getElementById('eslot-btn-' + btnKey);
+      if (btn) { btn.style.opacity='1'; btn.style.fontWeight='800'; btn.style.transform='scale(1.04)'; }
+    }
+  })();
+
   document.getElementById('ef-form').addEventListener('submit', async e => {
     e.preventDefault();
     const actType = document.querySelector('input[name="edit_activity"]:checked')?.value || s.activity_type || 'dog';
     const actCustom = actType === 'other_custom' ? (document.getElementById('ef-act-custom')?.value || null) : null;
-    const start  = document.getElementById('ef-start').value || null;
-    const end    = document.getElementById('ef-end').value || null;
+    const slot   = document.getElementById('ef-slot').value || null;
     const note   = document.getElementById('ef-note').value || null;
     const status = isAdmin ? document.getElementById('ef-status')?.value : undefined;
 
     const btn = document.getElementById('ef-btn');
     btn.disabled = true; btn.innerHTML = '<div class="spinner w-4 h-4"></div>';
 
-    const payload = { start_time: start, end_time: end, note, activity_type: actType, activity_custom: actCustom };
+    const payload = { start_time: slot, end_time: null, note, activity_type: actType, activity_custom: actCustom };
     if (status) payload.status = status;
 
     const r = await API.put('/shifts/' + s.id, payload);
