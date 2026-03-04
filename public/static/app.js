@@ -1124,18 +1124,124 @@ function renderListView() {
     </div>`;
   }
 
+  // 日付でグループ化
   const grp = {};
   State.shifts.forEach(s => { (grp[s.shift_date] = grp[s.shift_date] || []).push(s); });
-  const todayStr = todayLocal();
-  const dayNames = ['日','月','火','水','木','金','土'];
-  const isAdmin = State.user && State.user.role === 'admin';
+  const todayStr  = todayLocal();
+  const dayNames  = ['日','月','火','水','木','金','土'];
+  const isAdmin   = State.user && State.user.role === 'admin';
+
+  // 時間帯定義
+  const SLOT_DEFS = [
+    {key:'morning',  label:'朝', hc:'#d97706', bg:'#fffbeb', bc:'#fde68a'},
+    {key:'afternoon',label:'昼', hc:'#059669', bg:'#ecfdf5', bc:'#a7f3d0'},
+    {key:'night',    label:'夜', hc:'#4f46e5', bg:'#eef2ff', bc:'#c7d2fe'},
+  ];
+  const toSlot = t => {
+    if (!t) return 'night';
+    const h = parseInt(t.slice(0,2),10);
+    if (h>=3&&h<12) return 'morning';
+    if (h>=12&&h<17) return 'afternoon';
+    return 'night';
+  };
+  const ACT_KEY_ORDER = Object.keys(ACTIVITY_TYPES);
 
   let html = '<div class="max-w-screen-xl mx-auto p-3 space-y-4">';
+
   Object.keys(grp).sort().forEach(date => {
-    const d = new Date(date + 'T12:00:00');
-    const dn = dayNames[d.getDay()];
+    const d       = new Date(date + 'T12:00:00');
+    const dn      = dayNames[d.getDay()];
     const isToday = date === todayStr;
-    const sorted = grp[date].sort((a,b)=>(a.start_time||'99:99')<(b.start_time||'99:99')?-1:1);
+    const sorted  = grp[date].sort((a,b) => (a.start_time||'99:99') < (b.start_time||'99:99') ? -1 : 1);
+
+    // ── 場所でグループ化 ──────────────────────────────────────
+    // calendarId（場所）ごとにまとめる。場所の順序はカレンダー順＋「その他」
+    const locMap = {};   // locKey -> { label, color, shifts[] }
+    sorted.forEach(s => {
+      const locKey   = s.calendar_id + '__' + (s.location_type||'') + '__' + (s.location_custom||'');
+      const locLabel = getLocationLabel(s) || '（場所未設定）';
+      const calColor = s.calendar_color || '#9ca3af';
+      if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id };
+      locMap[locKey].shifts.push(s);
+    });
+    const locEntries = Object.values(locMap).sort((a,b) => a.sortKey - b.sortKey);
+
+    // 場所セクションHTML
+    const locSectionsHtml = locEntries.map(loc => {
+      // 場所内でスロット×活動グループ化
+      const slotActMap = { morning:{}, afternoon:{}, night:{} };
+      loc.shifts.forEach(s => {
+        const sk = toSlot(s.start_time);
+        const ak = s.activity_type || s.animal_type || 'other_custom';
+        if (!slotActMap[sk][ak]) slotActMap[sk][ak] = [];
+        slotActMap[sk][ak].push(s);
+      });
+
+      // 時間帯セクション
+      const slotSectionsHtml = SLOT_DEFS.map(({key, label, hc, bg, bc}) => {
+        const actGroups = slotActMap[key];
+        const actKeys   = ACT_KEY_ORDER.filter(ak => actGroups[ak] && actGroups[ak].length);
+        if (!actKeys.length) return '';
+
+        const actRowsHtml = actKeys.map(ak => {
+          const at     = ACTIVITY_TYPES[ak] || ACTIVITY_TYPES.other_custom;
+          const shifts = actGroups[ak];
+          const userChips = shifts.map(s => {
+            const isMine   = State.user && s.user_id === State.user.id;
+            const calColor = s.calendar_color || '#4f8ef7';
+            const sid      = s.id;
+            const timeStr  = s.start_time ? s.start_time.slice(0,5) : '';
+            return '<span onclick="event.stopPropagation();showDetailById(' + sid + ')"'
+              + ' style="display:inline-flex;align-items:center;gap:3px;'
+              + 'background:' + (isMine ? '#eff6ff' : '#fff') + ';'
+              + 'border:1.5px solid ' + (isMine ? '#93c5fd' : '#e5e7eb') + ';'
+              + 'border-radius:20px;padding:3px 10px;cursor:pointer;white-space:nowrap;'
+              + '-webkit-tap-highlight-color:transparent">'
+              + '<span style="font-size:13px;color:' + calColor + '">●</span>'
+              + '<span style="font-size:15px;font-weight:' + (isMine ? '700' : '500') + ';'
+              + 'color:' + (isMine ? '#1d4ed8' : '#1f2937') + '">' + escHtml(s.user_name) + '</span>'
+              + (timeStr ? '<span style="font-size:12px;color:#9ca3af">' + timeStr + '</span>' : '')
+              + '</span>';
+          }).join('');
+
+          return '<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:5px">'
+            + '<div style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;'
+            + 'background:' + at.bg + ';border:1.5px solid ' + at.color + '33;'
+            + 'border-radius:6px;padding:3px 8px;min-width:52px;justify-content:center">'
+            + '<span style="font-size:16px">' + at.emoji + '</span>'
+            + '<span style="font-size:13px;font-weight:700;color:' + at.color + '">'
+            + at.label.replace(/^[^\s]+\s/,'') + '</span>'
+            + '</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + userChips + '</div>'
+            + '</div>';
+        }).join('');
+
+        const timeRange = key==='morning' ? '03:00〜11:59' : key==='afternoon' ? '12:00〜16:59' : '17:00〜02:59';
+
+        return '<div style="padding:4px 10px 5px;border-bottom:1px solid #f3f4f6">'
+          + '<div style="display:inline-flex;align-items:center;gap:5px;'
+          + 'background:' + bg + ';border:1.5px solid ' + bc + ';'
+          + 'border-radius:8px;padding:2px 10px;margin-bottom:5px">'
+          + '<span style="font-size:15px;font-weight:800;color:' + hc + '">' + label + '</span>'
+          + '<span style="font-size:12px;color:' + hc + 'aa">' + timeRange + '</span>'
+          + '</div>'
+          + actRowsHtml
+          + '</div>';
+      }).filter(Boolean).join('');
+
+      return '<div style="margin-bottom:6px;border:1.5px solid ' + loc.color + '44;border-radius:10px;overflow:hidden">'
+        // 場所ヘッダー
+        + '<div style="display:flex;align-items:center;gap:6px;padding:5px 12px;'
+        + 'background:' + loc.color + '18;border-bottom:1px solid ' + loc.color + '44">'
+        + '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
+        + 'background:' + loc.color + ';flex-shrink:0"></span>'
+        + '<span style="font-size:15px;font-weight:700;color:#1f2937">' + escHtml(loc.label) + '</span>'
+        + '<span style="font-size:12px;color:#9ca3af;margin-left:2px">' + loc.shifts.length + '件</span>'
+        + '</div>'
+        // 時間帯セクション群
+        + slotSectionsHtml
+        + '</div>';
+    }).join('');
 
     html += `<div>
       <div class="flex items-center gap-2 mb-2 sticky top-0 bg-gray-50 py-1 z-10">
@@ -1144,47 +1250,10 @@ function renderListView() {
         <span class="text-xs text-gray-400">${sorted.length}件</span>
       </div>
       ${listNoteBannerHtml(date)}
-      <div class="space-y-1.5">`;
-
-    sorted.forEach(s => {
-      const color = s.calendar_color || '#4f8ef7';
-      const timeStr = s.start_time ? s.start_time.slice(0,5) + (s.end_time?' ～ '+s.end_time.slice(0,5):'') : '';
-      const stMap = { approved:'承認済', rejected:'却下' };
-      const stColor = { approved:'green', rejected:'red' };
-      const isMine = s.user_id === (State.user && State.user.id);
-      const locLabel = getLocationLabel(s);
-      const actLabel = getActivityLabel(s);
-      html += `<div class="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm border-l-4 cursor-pointer hover:shadow-md transition-shadow ${isMine?'bg-blue-50':''}"
-        style="border-left-color:${color}"
-        onclick="showDetailById(s.id)">
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-1.5 flex-wrap">
-            <span class="font-semibold text-gray-800 text-sm">${escHtml(s.user_name)}</span>
-            ${isMine?'<span class="text-xs bg-blue-500 text-white px-1.5 py-0.5 rounded-full">自分</span>':''}
-            <span class="text-xs font-medium" style="color:${color}">${escHtml(locLabel)}</span>
-            ${stMap[s.status]?('<span class="text-xs px-1.5 py-0.5 rounded bg-'+stColor[s.status]+'-100 text-'+stColor[s.status]+'-700">'+stMap[s.status]+'</span>'):''}
-          </div>
-          <div class="flex items-center gap-2 flex-wrap mt-0.5">
-            <span class="text-xs text-gray-500">${getActivityEmoji(s)} ${escHtml(actLabel)}</span>
-            ${timeStr?'<span class="text-xs text-gray-500"><i class="fas fa-clock mr-0.5"></i>'+timeStr+'</span>':''}
-            ${s.note?'<span class="text-xs text-gray-400 truncate"><i class="fas fa-sticky-note mr-0.5"></i>'+escHtml(s.note)+'</span>':''}
-          </div>
-        </div>
-        ${(isMine || isAdmin) ? `
-        <div class="flex gap-1 flex-shrink-0">
-          <button onclick="event.stopPropagation();openEditFormById(${s.id})"
-            class="text-blue-300 hover:text-blue-500 text-xs p-1 transition-colors" title="編集">
-            <i class="fas fa-edit"></i>
-          </button>
-          <button onclick="event.stopPropagation();deleteShift(${s.id})"
-            class="text-red-300 hover:text-red-500 text-xs p-1 transition-colors" title="削除">
-            <i class="fas fa-trash"></i>
-          </button>
-        </div>` : ''}
-      </div>`;
-    });
-    html += '</div></div>';
+      ${locSectionsHtml}
+    </div>`;
   });
+
   html += '</div>';
   return html;
 }
