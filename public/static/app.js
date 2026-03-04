@@ -822,7 +822,7 @@ function buildQuickDetail(selDate, map) {
   // ── 場所グループ化 → 場所内でスロット×活動グループ化 ──
   const locMap = {};
   dayShifts.forEach(s => {
-    const locKey   = s.calendar_id + '__' + (s.location_type||'') + '__' + (s.location_custom||'');
+    const locKey   = getLocationLabel(s) || '（場所未設定）';
     const locLabel = getLocationLabel(s) || '（場所未設定）';
     const calColor = s.calendar_color || '#9ca3af';
     if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id };
@@ -1183,7 +1183,7 @@ function renderListView() {
     // calendarId（場所）ごとにまとめる。場所の順序はカレンダー順＋「その他」
     const locMap = {};   // locKey -> { label, color, shifts[] }
     sorted.forEach(s => {
-      const locKey   = s.calendar_id + '__' + (s.location_type||'') + '__' + (s.location_custom||'');
+      const locKey   = getLocationLabel(s) || '（場所未設定）';
       const locLabel = getLocationLabel(s) || '（場所未設定）';
       const calColor = s.calendar_color || '#9ca3af';
       if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id };
