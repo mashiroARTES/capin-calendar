@@ -63,7 +63,7 @@ sosBadges.post('/', authMiddleware, adminMiddleware, async (c) => {
     if (!calendar_id) {
       return c.json({ error: '場所（カレンダー）を指定してください' }, 400);
     }
-    const validActivities = ['dog','cat','other_animal','office','negotiation','supplies','transport','rescue','capture','other_custom'];
+    const validActivities = ['dog','cat','other_animal','office','negotiation','supplies','transport','rescue','capture','hospital_reception','other_custom'];
     if (!activity_type || !validActivities.includes(activity_type)) {
       return c.json({ error: '活動内容が正しくありません' }, 400);
     }

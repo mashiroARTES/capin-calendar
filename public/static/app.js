@@ -13,10 +13,36 @@ const ACTIVITY_TYPES = {
   transport:    { label: '🚗 病院搬送',    emoji: '🚗', color: '#f97316', bg: '#fff7ed' },
   rescue:       { label: '🏠 センター引き出し', emoji: '🏠', color: '#84cc16', bg: '#f7fee7' },
   capture:      { label: '🪤 捕獲',        emoji: '🪤', color: '#a855f7', bg: '#faf5ff' },
+  hospital_reception: { label: '🏥 病院受付', emoji: '🏥', color: '#ef4444', bg: '#fef2f2' },
   other_custom: { label: '✏️ その他',      emoji: '✏️', color: '#6b7280', bg: '#f3f4f6' },
 };
 // 後方互換
 const ANIMAL_TYPES = ACTIVITY_TYPES;
+
+// ── 常時表示スロット（人がいなくても枠を表示する 場所名×時間帯×活動 の組み合わせ） ──
+// 場所名は getLocationLabel() が返す文字列と一致させること
+const ALWAYS_SHOW_SLOTS = [
+  // 第１シェルター 朝
+  { loc: '第１シェルター', slot: 'morning',  act: 'dog'      },
+  { loc: '第１シェルター', slot: 'morning',  act: 'cat'      },
+  { loc: '第１シェルター', slot: 'morning',  act: 'supplies' },
+  // 第１シェルター 夕
+  { loc: '第１シェルター', slot: 'night',    act: 'dog'      },
+  { loc: '第１シェルター', slot: 'night',    act: 'cat'      },
+  { loc: '第１シェルター', slot: 'night',    act: 'supplies' },
+  // 第２シェルター 朝
+  { loc: '第２シェルター', slot: 'morning',  act: 'dog'      },
+  { loc: '第２シェルター', slot: 'morning',  act: 'cat'      },
+  // 第２シェルター 夕
+  { loc: '第２シェルター', slot: 'night',    act: 'dog'      },
+  { loc: '第２シェルター', slot: 'night',    act: 'cat'      },
+  // パル動物病院 朝
+  { loc: 'パル動物病院',   slot: 'morning',  act: 'cat'               },
+  { loc: 'パル動物病院',   slot: 'morning',  act: 'hospital_reception' },
+  // パル動物病院 夕
+  { loc: 'パル動物病院',   slot: 'night',    act: 'cat'               },
+  { loc: 'パル動物病院',   slot: 'night',    act: 'hospital_reception' },
+];
 
 const API = {
   base: '/api',
@@ -569,7 +595,7 @@ function getActivityEmoji(s) {
 const ACT_SHORT = {
   dog: '犬', cat: '猫', other_animal: '他', office: '事務',
   negotiation: '折衝', supplies: '物資', transport: '搬送',
-  rescue: '引出', capture: '捕獲', other_custom: '他',
+  rescue: '引出', capture: '捕獲', hospital_reception: '病院受付', other_custom: '他',
 };
 function getActivityShort(s) {
   const type = s.activity_type || s.animal_type || 'other_animal';
@@ -828,6 +854,19 @@ function buildQuickDetail(selDate, map) {
     if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id };
     locMap[locKey].shifts.push(s);
   });
+  // 常時表示スロット：人がいなくてもlocMapに枠を確保
+  ALWAYS_SHOW_SLOTS.forEach(({loc: locName, slot, act}) => {
+    if (!locMap[locName]) {
+      // カレンダー情報をState.calendarsから探す
+      const cal = State.calendars.find(c => c.name === locName);
+      const calColor = cal ? cal.color : '#9ca3af';
+      locMap[locName] = { label: locName, color: calColor, shifts: [], sortKey: cal ? cal.id : 999 };
+    }
+    // shifts は後でslotActMapに反映するのでここではロケーションだけ確保
+    if (!locMap[locName]._alwaysSlots) locMap[locName]._alwaysSlots = [];
+    locMap[locName]._alwaysSlots.push({ slot, act });
+  });
+
   const locEntries = Object.values(locMap).sort((a,b) => a.sortKey - b.sortKey);
 
   const summaryHtml = locEntries.map(loc => {
@@ -838,6 +877,10 @@ function buildQuickDetail(selDate, map) {
       const ak = s.activity_type || s.animal_type || 'other_custom';
       if (!slotActMap[sk][ak]) slotActMap[sk][ak] = [];
       slotActMap[sk][ak].push(s);
+    });
+    // 常時表示スロットに空配列を確保（シフト未登録でも枠を出す）
+    (loc._alwaysSlots || []).forEach(({slot, act}) => {
+      if (!slotActMap[slot][act]) slotActMap[slot][act] = [];
     });
 
     const slotRowsHtml = SLOT_DEF.map(({key, label, hc, bg, bc}) => {
@@ -869,6 +912,9 @@ function buildQuickDetail(selDate, map) {
             + '</span>';
         }).join('');
 
+        const emptyChip = shifts.length === 0
+          ? '<span style="font-size:13px;color:#9ca3af;font-style:italic;padding:3px 8px">（未登録）</span>'
+          : '';
         return '<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:5px">'
           + '<div style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;'
           + 'background:' + at.bg + ';border:1.5px solid ' + at.color + '33;'
@@ -877,7 +923,7 @@ function buildQuickDetail(selDate, map) {
           + '<span style="font-size:13px;font-weight:700;color:' + at.color + '">'
           + at.label.replace(/^[^\s]+\s/,'') + '</span>'
           + '</div>'
-          + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + userChips + '</div>'
+          + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + userChips + emptyChip + '</div>'
           + '</div>';
       }).join('');
 
@@ -1189,6 +1235,17 @@ function renderListView() {
       if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id };
       locMap[locKey].shifts.push(s);
     });
+    // 常時表示スロット：人がいなくてもlocMapに枠を確保
+    ALWAYS_SHOW_SLOTS.forEach(({loc: locName, slot, act}) => {
+      if (!locMap[locName]) {
+        const cal = State.calendars.find(c => c.name === locName);
+        const calColor = cal ? cal.color : '#9ca3af';
+        locMap[locName] = { label: locName, color: calColor, shifts: [], sortKey: cal ? cal.id : 999 };
+      }
+      if (!locMap[locName]._alwaysSlots) locMap[locName]._alwaysSlots = [];
+      locMap[locName]._alwaysSlots.push({ slot, act });
+    });
+
     const locEntries = Object.values(locMap).sort((a,b) => a.sortKey - b.sortKey);
 
     // 場所セクションHTML
@@ -1200,6 +1257,10 @@ function renderListView() {
         const ak = s.activity_type || s.animal_type || 'other_custom';
         if (!slotActMap[sk][ak]) slotActMap[sk][ak] = [];
         slotActMap[sk][ak].push(s);
+      });
+      // 常時表示スロットに空配列を確保
+      (loc._alwaysSlots || []).forEach(({slot, act}) => {
+        if (!slotActMap[slot][act]) slotActMap[slot][act] = [];
       });
 
       // 時間帯セクション
@@ -1231,6 +1292,9 @@ function renderListView() {
               + '</span>';
           }).join('');
 
+          const emptyChip = shifts.length === 0
+            ? '<span style="font-size:13px;color:#9ca3af;font-style:italic;padding:3px 8px">（未登録）</span>'
+            : '';
           return '<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:5px">'
             + '<div style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;'
             + 'background:' + at.bg + ';border:1.5px solid ' + at.color + '33;'
@@ -1239,7 +1303,7 @@ function renderListView() {
             + '<span style="font-size:13px;font-weight:700;color:' + at.color + '">'
             + at.label.replace(/^[^\s]+\s/,'') + '</span>'
             + '</div>'
-            + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + userChips + '</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + userChips + emptyChip + '</div>'
             + '</div>';
         }).join('');
 
