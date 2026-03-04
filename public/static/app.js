@@ -443,8 +443,8 @@ function updateViewBtns() {
 function renderContent() {
   const el = document.getElementById('cal-content');
   if (!el) return;
-  // クイック・月ビューは内部でflexを使うためoverflow:hidden必須
-  el.style.overflow = (State.viewMode === 'month' || State.viewMode === 'quick') ? 'hidden' : 'auto';
+  // クイックビューはflex内部構造のためhidden、月ビューは縦スクロール可能にする
+  el.style.overflow = State.viewMode === 'quick' ? 'hidden' : 'auto';
   if (State.loading) {
     el.innerHTML = `<div class="flex items-center justify-center h-full"><div class="spinner"></div></div>`;
     return;
@@ -1107,16 +1107,17 @@ function renderMonthView() {
     cells.push({ day, ds, isToday: ds===todayStr, isTomorrow: ds===tomorrowStr });
   }
 
-  // 各行の高さ（当日/翌日含む行=280px、隣接行=100px、他=52px）
+  // 各行の最低高さ（当日/翌日含む行=180px、隣接行=90px、他=52px）
+  // セルはmin-heightで管理し、内容に応じて伸びる
   const rowHeights = Array.from({length: rows}, (_, r) => {
     const hasKey = cells.slice(r*7, r*7+7).some(c => c && (c.isToday || c.isTomorrow));
-    return hasKey ? 280 : 52;
+    return hasKey ? 180 : 52;
   });
-  // 隣接行を100pxに昇格
+  // 隣接行を90pxに昇格
   for (let r = 0; r < rows; r++) {
-    if (rowHeights[r] === 280) {
-      if (r > 0       && rowHeights[r-1] === 52) rowHeights[r-1] = 100;
-      if (r < rows-1  && rowHeights[r+1] === 52) rowHeights[r+1] = 100;
+    if (rowHeights[r] === 180) {
+      if (r > 0       && rowHeights[r-1] === 52) rowHeights[r-1] = 90;
+      if (r < rows-1  && rowHeights[r+1] === 52) rowHeights[r+1] = 90;
     }
   }
 
@@ -1154,7 +1155,7 @@ function renderMonthView() {
       const borderB = '1px solid #e5e7eb';
 
       if (!cell) {
-        rowHtml += `<div style="width:${w}%;flex-shrink:0;height:${rowH}px;background:#f9fafb;border-right:${borderR};border-bottom:${borderB};box-sizing:border-box;opacity:0.5"></div>`;
+        rowHtml += `<div style="width:${w}%;flex-shrink:0;min-height:${rowH}px;background:#f9fafb;border-right:${borderR};border-bottom:${borderB};box-sizing:border-box;opacity:0.5"></div>`;
         continue;
       }
 
@@ -1188,16 +1189,16 @@ function renderMonthView() {
         });
       });
 
-      // 当日/翌日行はスクロール可能に、他は隠す
-      const overflowStyle = (isToday || isTomorrow) ? 'overflow-y:auto;-webkit-overflow-scrolling:touch' : 'overflow:hidden';
+      // 全セルスクロール可能
+      const overflowStyle = 'overflow-y:auto;-webkit-overflow-scrolling:touch';
 
       const locBadge = locationCountHtml(dayShifts);
       const sosBadgeRow = sosBadgesRowHtml(ds);
 
-      rowHtml += `<div style="width:${w}%;flex-shrink:0;height:${rowH}px;background:${bg};border-right:${borderR};border-bottom:${borderB};box-sizing:border-box;padding:0;${overflowStyle};cursor:pointer;vertical-align:top;position:relative"
+      rowHtml += `<div style="width:${w}%;flex-shrink:0;min-height:${rowH}px;background:${bg};border-right:${borderR};border-bottom:${borderB};box-sizing:border-box;padding:0;${overflowStyle};cursor:pointer;vertical-align:top;position:relative"
         onclick="openDayView('${ds}')">
         <div style="position:absolute;inset:0;z-index:0"></div>
-        <div style="position:relative;z-index:1;padding:2px 1px;display:flex;flex-direction:column;min-height:${rowH}px;pointer-events:auto;box-sizing:border-box">
+        <div style="position:relative;z-index:1;padding:2px 1px;display:flex;flex-direction:column;pointer-events:auto;box-sizing:border-box">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1px">${dayLabel}${cntLabel}</div>
           ${calNoteBadgeHtml(ds)}
           ${sosBadgeRow}
@@ -1206,7 +1207,7 @@ function renderMonthView() {
         </div>
       </div>`;
     }
-    bodyHtml += `<div style="display:flex;width:100%">${rowHtml}</div>`;
+    bodyHtml += `<div style="display:flex;width:100%;align-items:flex-start">${rowHtml}</div>`;
   }
 
   return `<div style="width:100%;overflow-x:hidden">
