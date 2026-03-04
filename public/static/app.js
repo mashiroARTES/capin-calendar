@@ -1043,10 +1043,21 @@ function buildQuickDetail(selDate, map) {
       })()
     : '';
 
+  const addBtnTop = !isGuest
+    ? `<button onclick="openShiftForm('${sd}')"` +
+      ` style="display:flex;align-items:center;justify-content:center;gap:5px;` +
+      `background:#3b82f6;color:#fff;border:none;border-radius:8px;` +
+      `padding:5px 12px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">` +
+      `<i class="fas fa-plus"></i>登録</button>`
+    : '';
+
   return '<div>'
     + '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px 4px;border-bottom:1px solid #e5e7eb;background:#fff;position:sticky;top:0;z-index:1">'
+    + '<div style="display:flex;align-items:center;gap:8px">'
     + '<span style="font-size:16px;font-weight:800;color:' + (isToday?'#1d4ed8':'#1f2937') + '">' + dateLabel + '</span>'
     + '<span style="font-size:15px;color:#9ca3af">' + dayShifts.length + '名参加</span>'
+    + '</div>'
+    + addBtnTop
     + '</div>'
     + sosHtml
     + noteHtml
