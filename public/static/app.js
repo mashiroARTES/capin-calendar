@@ -22,26 +22,23 @@ const ANIMAL_TYPES = ACTIVITY_TYPES;
 // ── 常時表示スロット（人がいなくても枠を表示する 場所名×時間帯×活動 の組み合わせ） ──
 // 場所名は getLocationLabel() が返す文字列と一致させること
 const ALWAYS_SHOW_SLOTS = [
-  // 第１シェルター 朝
+  // 第１シェルター 朝夕（犬・猫）
   { loc: '第１シェルター', slot: 'morning',  act: 'dog'      },
   { loc: '第１シェルター', slot: 'morning',  act: 'cat'      },
-  { loc: '第１シェルター', slot: 'morning',  act: 'supplies' },
-  // 第１シェルター 夕
   { loc: '第１シェルター', slot: 'night',    act: 'dog'      },
   { loc: '第１シェルター', slot: 'night',    act: 'cat'      },
-  { loc: '第１シェルター', slot: 'night',    act: 'supplies' },
-  // 第２シェルター 朝
+  // 第１シェルター 支援物資（スロットなし）
+  { loc: '第１シェルター', slot: null,       act: 'supplies' },
+  // 第２シェルター 朝夕（犬・猫）
   { loc: '第２シェルター', slot: 'morning',  act: 'dog'      },
   { loc: '第２シェルター', slot: 'morning',  act: 'cat'      },
-  // 第２シェルター 夕
   { loc: '第２シェルター', slot: 'night',    act: 'dog'      },
   { loc: '第２シェルター', slot: 'night',    act: 'cat'      },
-  // パル動物病院 朝
+  // パル動物病院 朝夕（猫）
   { loc: 'パル動物病院',   slot: 'morning',  act: 'cat'               },
-  { loc: 'パル動物病院',   slot: 'morning',  act: 'hospital_reception' },
-  // パル動物病院 夕
   { loc: 'パル動物病院',   slot: 'night',    act: 'cat'               },
-  { loc: 'パル動物病院',   slot: 'night',    act: 'hospital_reception' },
+  // パル動物病院 病院受付（スロットなし）
+  { loc: 'パル動物病院',   slot: null,       act: 'hospital_reception' },
 ];
 
 const API = {
@@ -870,74 +867,112 @@ function buildQuickDetail(selDate, map) {
   const locEntries = Object.values(locMap).sort((a,b) => a.sortKey - b.sortKey);
 
   const summaryHtml = locEntries.map(loc => {
-    // スロット×活動でグループ化
-    const slotActMap = { morning:{}, afternoon:{}, night:{} };
+    // 活動×スロットでグループ化（キー: actKey → slotKey → [shifts]）
+    const actSlotMap = {};
     loc.shifts.forEach(s => {
-      const sk = toSlotKey(s.start_time);
       const ak = s.activity_type || s.animal_type || 'other_custom';
-      if (!slotActMap[sk][ak]) slotActMap[sk][ak] = [];
-      slotActMap[sk][ak].push(s);
+      const sk = toSlotKey(s.start_time);
+      if (!actSlotMap[ak]) actSlotMap[ak] = { morning:[], afternoon:[], night:[], _noSlot:[] };
+      actSlotMap[ak][sk].push(s);
     });
-    // 常時表示スロットに空配列を確保（シフト未登録でも枠を出す）
+
+    // 常時表示エントリを活動×スロットマップに反映
+    // slot: null のエントリは _noSlot キーで保持
     (loc._alwaysSlots || []).forEach(({slot, act}) => {
-      if (!slotActMap[slot][act]) slotActMap[slot][act] = [];
+      if (!actSlotMap[act]) actSlotMap[act] = { morning:[], afternoon:[], night:[], _noSlot:[] };
+      const sk = slot === null ? '_noSlot' : slot;
+      // 既にシフトが登録されていない場合のみ「空」として確保（push不要、配列は初期化済み）
     });
 
-    const slotRowsHtml = SLOT_DEF.map(({key, label, hc, bg, bc}) => {
-      const actGroups = slotActMap[key];
-      // 実際にシフトがあるact + 常時表示スロットで指定されているact の和集合
-      const alwaysActs = new Set((loc._alwaysSlots || []).filter(a => a.slot === key).map(a => a.act));
-      const actKeys   = ACT_KEY_ORDER.filter(ak => (actGroups[ak] !== undefined) || alwaysActs.has(ak));
-      // alwaysActsにあるが slotActMap に未登録のものを空配列で初期化
-      alwaysActs.forEach(ak => { if (!actGroups[ak]) actGroups[ak] = []; });
-      if (!actKeys.length) return '';
+    // 常時表示で指定された「スロットなし活動」を収集
+    const noSlotAlwaysActs = new Set(
+      (loc._alwaysSlots || []).filter(a => a.slot === null).map(a => a.act)
+    );
+    // スロットあり常時表示活動を収集（slot別）
+    const slottedAlwaysMap = {}; // slot -> Set of acts
+    (loc._alwaysSlots || []).filter(a => a.slot !== null).forEach(({slot, act}) => {
+      if (!slottedAlwaysMap[slot]) slottedAlwaysMap[slot] = new Set();
+      slottedAlwaysMap[slot].add(act);
+    });
 
-      const actRowsHtml = actKeys.map(ak => {
-        const at     = ACTIVITY_TYPES[ak] || ACTIVITY_TYPES.other_custom;
-        const shifts = actGroups[ak];
-        const userChips = shifts.map(s => {
-          const isMine   = State.user && s.user_id === State.user.id;
-          const calColor = s.calendar_color || '#4f8ef7';
-          const sid      = s.id;
-          // メモを名前右に表示
-          const memoSpan = s.note
-            ? '<span style="font-size:12px;color:#6b7280;margin-left:3px;font-style:italic;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
-              + escHtml(s.note) + '</span>'
-            : '';
-          return '<span onclick="event.stopPropagation();showDetailById(' + sid + ')"'
-            + ' style="display:inline-flex;align-items:center;gap:3px;'
-            + 'background:' + (isMine ? '#eff6ff' : '#fff') + ';'
-            + 'border:1.5px solid ' + (isMine ? '#93c5fd' : '#e5e7eb') + ';'
-            + 'border-radius:20px;padding:3px 10px;cursor:pointer;white-space:nowrap;'
-            + '-webkit-tap-highlight-color:transparent">'
-            + '<span style="font-size:15px;font-weight:' + (isMine ? '700' : '500') + ';'
-            + 'color:' + (isMine ? '#1d4ed8' : '#1f2937') + '">' + escHtml(s.user_name) + '</span>'
-            + memoSpan
-            + '</span>';
-        }).join('');
+    // 表示する活動キーを決定（シフトがある活動 + 常時表示活動）
+    const allActKeys = new Set([
+      ...Object.keys(actSlotMap),
+      ...(loc._alwaysSlots || []).map(a => a.act)
+    ]);
+    const actKeys = ACT_KEY_ORDER.filter(ak => allActKeys.has(ak));
 
-        const emptyChip = shifts.length === 0
+    // ユーザーチップを生成するヘルパー
+    const makeUserChips = (shifts) => shifts.map(s => {
+      const isMine   = State.user && s.user_id === State.user.id;
+      const sid      = s.id;
+      const memoSpan = s.note
+        ? '<span style="font-size:12px;color:#6b7280;margin-left:3px;font-style:italic;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+          + escHtml(s.note) + '</span>'
+        : '';
+      return '<span onclick="event.stopPropagation();showDetailById(' + sid + ')"'
+        + ' style="display:inline-flex;align-items:center;gap:3px;'
+        + 'background:' + (isMine ? '#eff6ff' : '#fff') + ';'
+        + 'border:1.5px solid ' + (isMine ? '#93c5fd' : '#e5e7eb') + ';'
+        + 'border-radius:20px;padding:3px 10px;cursor:pointer;white-space:nowrap;'
+        + '-webkit-tap-highlight-color:transparent">'
+        + '<span style="font-size:15px;font-weight:' + (isMine ? '700' : '500') + ';'
+        + 'color:' + (isMine ? '#1d4ed8' : '#1f2937') + '">' + escHtml(s.user_name) + '</span>'
+        + memoSpan
+        + '</span>';
+    }).join('');
+
+    const slotRowsHtml = actKeys.map(ak => {
+      const at = ACTIVITY_TYPES[ak] || ACTIVITY_TYPES.other_custom;
+      const actData = actSlotMap[ak] || { morning:[], afternoon:[], night:[], _noSlot:[] };
+
+      // このactがスロットなし常時表示かどうか
+      const isNoSlotAct = noSlotAlwaysActs.has(ak);
+
+      let innerHtml = '';
+
+      if (isNoSlotAct) {
+        // スロット指定なし：全スロットのシフトをまとめて1行表示
+        const allShifts = [...actData.morning, ...actData.afternoon, ...actData.night, ...actData._noSlot];
+        const chips = makeUserChips(allShifts);
+        const emptyChip = allShifts.length === 0
           ? '<span style="font-size:13px;color:#9ca3af;font-style:italic;padding:3px 8px">（未登録）</span>'
           : '';
-        return '<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:5px">'
-          + '<div style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;'
-          + 'background:' + at.bg + ';border:1.5px solid ' + at.color + '33;'
-          + 'border-radius:6px;padding:3px 8px;min-width:52px;justify-content:center">'
-          + '<span style="font-size:16px">' + at.emoji + '</span>'
-          + '<span style="font-size:13px;font-weight:700;color:' + at.color + '">'
-          + at.label.replace(/^[^\s]+\s/,'') + '</span>'
-          + '</div>'
-          + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + userChips + emptyChip + '</div>'
-          + '</div>';
-      }).join('');
+        innerHtml = '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding-left:2px">'
+          + chips + emptyChip + '</div>';
+      } else {
+        // スロット指定あり：朝・昼・夜ごとに行を出す
+        innerHtml = SLOT_DEF.map(({key, label, hc, bg, bc}) => {
+          const alwaysForSlot = slottedAlwaysMap[key] || new Set();
+          const shifts = actData[key] || [];
+          // このact×slotが常時表示対象か、またはシフトがあるか
+          if (shifts.length === 0 && !alwaysForSlot.has(ak)) return '';
+          const chips = makeUserChips(shifts);
+          const emptyChip = shifts.length === 0
+            ? '<span style="font-size:13px;color:#9ca3af;font-style:italic;padding:3px 8px">（未登録）</span>'
+            : '';
+          return '<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">'
+            + '<span style="display:inline-flex;align-items:center;'
+            + 'background:' + bg + ';border:1.5px solid ' + bc + ';'
+            + 'border-radius:6px;padding:1px 7px;flex-shrink:0">'
+            + '<span style="font-size:13px;font-weight:800;color:' + hc + '">' + label + '</span>'
+            + '</span>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">'
+            + chips + emptyChip + '</div>'
+            + '</div>';
+        }).filter(Boolean).join('');
+        if (!innerHtml) return '';
+      }
 
-      return '<div style="padding:4px 8px 5px;border-bottom:1px solid #f3f4f6">'
-        + '<div style="display:inline-flex;align-items:center;gap:4px;'
-        + 'background:' + bg + ';border:1.5px solid ' + bc + ';'
-        + 'border-radius:8px;padding:2px 10px;margin-bottom:5px">'
-        + '<span style="font-size:15px;font-weight:800;color:' + hc + '">' + label + '</span>'
+      return '<div style="padding:4px 8px 6px;border-bottom:1px solid #f3f4f6">'
+        + '<div style="display:inline-flex;align-items:center;gap:3px;'
+        + 'background:' + at.bg + ';border:1.5px solid ' + at.color + '33;'
+        + 'border-radius:6px;padding:3px 8px;margin-bottom:4px">'
+        + '<span style="font-size:16px">' + at.emoji + '</span>'
+        + '<span style="font-size:13px;font-weight:700;color:' + at.color + '">'
+        + at.label.replace(/^[^\s]+\s/,'') + '</span>'
         + '</div>'
-        + actRowsHtml
+        + innerHtml
         + '</div>';
     }).filter(Boolean).join('');
 
