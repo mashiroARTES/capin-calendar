@@ -119,7 +119,19 @@ shifts.post('/', authMiddleware, async (c) => {
     }
     
     // 重複チェックなし（同一ユーザー・同日・同カレンダーで複数登録可能）
-    
+
+    // 代理登録: override_user_name が指定された場合、名前でユーザーを検索してuser_idを差し替え
+    let actualUserId = userId;
+    if (userRole === 'admin' && override_user_name) {
+      const targetUser = await c.env.DB.prepare(
+        'SELECT id FROM users WHERE name = ? LIMIT 1'
+      ).bind(override_user_name.trim()).first<{ id: number }>();
+      if (targetUser) {
+        actualUserId = targetUser.id;
+      }
+      // 見つからない場合はそのまま管理者名義で登録（フォールバック）
+    }
+
     // シフト作成
     const result = await c.env.DB.prepare(`
       INSERT INTO shifts (
@@ -130,7 +142,7 @@ shifts.post('/', authMiddleware, async (c) => {
       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
       RETURNING *
     `).bind(
-      userId,
+      actualUserId,
       calendar_id,
       shift_date,
       start_time || null,
@@ -142,10 +154,6 @@ shifts.post('/', authMiddleware, async (c) => {
       locationTypeValue,
       locationCustomValue,
     ).first();
-    
-    // 管理者が override_user_name を指定した場合はメモに付記（実際のuser_idは変えない）
-    // → 別途「代理登録」機能として user_id をoverride可能に
-    // ただし管理者のみ
     
     return c.json({ message: 'シフトを登録しました', shift: result }, 201);
     

@@ -565,6 +565,16 @@ function getActivityEmoji(s) {
   const type = s.activity_type || s.animal_type || 'other_animal';
   return (ACTIVITY_TYPES[type] || ACTIVITY_TYPES.other_animal).emoji;
 }
+// カレンダー上での短縮文字表記（絵文字なし）
+const ACT_SHORT = {
+  dog: '犬', cat: '猫', other_animal: '他', office: '事務',
+  negotiation: '折衝', supplies: '物資', transport: '搬送',
+  rescue: '引出', capture: '捕獲', other_custom: '他',
+};
+function getActivityShort(s) {
+  const type = s.activity_type || s.animal_type || 'other_animal';
+  return ACT_SHORT[type] || '他';
+}
 function getActivityColor(s) {
   const type = s.activity_type || s.animal_type || 'other_animal';
   return (ACTIVITY_TYPES[type] || ACTIVITY_TYPES.other_animal).color;
@@ -833,7 +843,7 @@ function buildQuickDetail(selDate, map) {
             + 'background:'+ss.bg+';border:1.5px solid '+ss.bc+';'
             + 'border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700;color:#374151;white-space:nowrap">'
             + '<span style="color:'+e.calColor+';font-size:9px">●</span>'
-            + '<span style="font-size:11px">'+at.emoji+'</span>'
+            + '<span style="font-size:11px;font-weight:700;color:'+(ACTIVITY_TYPES[e.actKey]||ACTIVITY_TYPES.other_custom).color+'">'+(ACT_SHORT[e.actKey]||'他')+'</span>'
             + '<span style="color:'+ss.hc+';font-size:11px;font-weight:800">'+ss.label+'</span>'
             + escHtml(e.short)
             + '<span style="color:#3b82f6;margin-left:2px">'+e.count+'</span>'
@@ -1081,7 +1091,7 @@ function renderMonthView() {
           const color = s.calendar_color||'#4f8ef7';
           badges += '<div style="display:flex;align-items:center;gap:1px;overflow:hidden;cursor:pointer;padding-left:2px"'
             + ' onclick="event.stopPropagation();showDetailById(' + s.id + ')">'
-            + '<span style="font-size:8px;flex-shrink:0">' + getActivityEmoji(s) + '</span>'
+            + '<span style="font-size:8px;font-weight:700;color:' + color + ';flex-shrink:0">' + getActivityShort(s) + '</span>'
             + '<span style="font-size:9px;font-weight:600;color:' + color + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(s.user_name) + '</span>'
             + '</div>';
         });
@@ -1288,16 +1298,33 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
         </div>
 
         <!-- 時刻 -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">開始時刻</label>
-            <input type="time" id="sf-start"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">時間帯</label>
+          <div class="flex gap-2 mb-2">
+            <button type="button" onclick="setTimeSlot('morning')"
+              class="flex-1 py-1.5 rounded-lg text-xs font-bold border-2 border-yellow-300 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 transition-colors" id="slot-btn-morning">
+              朝<span class="block text-xs font-normal text-yellow-600">09:00〜12:00</span>
+            </button>
+            <button type="button" onclick="setTimeSlot('noon')"
+              class="flex-1 py-1.5 rounded-lg text-xs font-bold border-2 border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition-colors" id="slot-btn-noon">
+              昼<span class="block text-xs font-normal text-green-600">12:00〜17:00</span>
+            </button>
+            <button type="button" onclick="setTimeSlot('evening')"
+              class="flex-1 py-1.5 rounded-lg text-xs font-bold border-2 border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors" id="slot-btn-evening">
+              夕<span class="block text-xs font-normal text-indigo-600">17:00〜20:00</span>
+            </button>
           </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">終了時刻</label>
-            <input type="time" id="sf-end"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">開始時刻（直接入力も可）</label>
+              <input type="time" id="sf-start"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">終了時刻（直接入力も可）</label>
+              <input type="time" id="sf-end"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
           </div>
         </div>
 
@@ -1344,6 +1371,25 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
       }
     });
   });
+
+  // 時間帯ショートカット
+  window.setTimeSlot = function(slot) {
+    const startEl = document.getElementById('sf-start');
+    const endEl   = document.getElementById('sf-end');
+    if (!startEl || !endEl) return;
+    const map = { morning: ['09:00','12:00'], noon: ['12:00','17:00'], evening: ['17:00','20:00'] };
+    const [s, e] = map[slot] || [];
+    if (s) startEl.value = s;
+    if (e) endEl.value   = e;
+    // ボタンのハイライト切替
+    ['morning','noon','evening'].forEach(k => {
+      const btn = document.getElementById('slot-btn-' + k);
+      if (!btn) return;
+      const active = k === slot;
+      btn.style.opacity = active ? '1' : '0.5';
+      btn.style.fontWeight = active ? '800' : '';
+    });
+  };
 
   // 活動内容ラジオクリック
   document.querySelectorAll('input[name="activity_type"]').forEach(radio => {
@@ -1576,8 +1622,8 @@ function openDayView(dateStr, focusNote = false) {
         const dog = shifts.filter(s => (s.activity_type||s.animal_type) === 'dog').length;
         const cat = shifts.filter(s => (s.activity_type||s.animal_type) === 'cat').length;
         const animalBadges =
-          (dog ? `<span class="text-xs font-semibold" style="color:#3b82f6">🐶${dog}</span>` : '') +
-          (cat ? `<span class="text-xs font-semibold" style="color:#ec4899">🐱${cat}</span>` : '');
+          (dog ? `<span class="text-xs font-semibold" style="color:#3b82f6">犬${dog}</span>` : '') +
+          (cat ? `<span class="text-xs font-semibold" style="color:#ec4899">猫${cat}</span>` : '');
         return `<div class="flex items-center justify-between gap-2 py-1 border-b border-gray-50 last:border-0">
           <span class="text-xs font-semibold text-gray-700 truncate flex-1">${escHtml(loc)}</span>
           <span class="text-xs text-gray-400 flex-shrink-0">${shifts.length}名</span>
@@ -1613,8 +1659,8 @@ function openDayView(dateStr, focusNote = false) {
           return `<div class="flex-1 rounded-lg px-2 py-1.5 text-center" style="background:${hc}12;border:1px solid ${hc}30">
             <div class="text-xs font-bold mb-1" style="color:${hc}">${icon} ${label}</div>
             <div class="flex justify-center gap-2">
-              <span class="text-xs font-semibold" style="color:#3b82f6">🐶${dog}</span>
-              <span class="text-xs font-semibold" style="color:#ec4899">🐱${cat}</span>
+              <span class="text-xs font-semibold" style="color:#3b82f6">犬${dog}</span>
+              <span class="text-xs font-semibold" style="color:#ec4899">猫${cat}</span>
             </div>
           </div>`;
         }).join('');
