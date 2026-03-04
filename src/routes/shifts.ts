@@ -20,8 +20,9 @@ shifts.get('/', optionalAuthMiddleware, async (c) => {
         s.start_time, s.end_time, s.note, s.status,
         s.animal_type, s.activity_type, s.activity_custom,
         s.location_type, s.location_custom,
-        s.created_at,
-        u.name as user_name, u.email as user_email,
+        s.override_name, s.created_at,
+        COALESCE(s.override_name, u.name) as user_name,
+        u.name as real_user_name, u.email as user_email,
         cal.name as calendar_name, cal.color as calendar_color, cal.slug as calendar_slug
       FROM shifts s
       JOIN users u ON s.user_id = u.id
@@ -120,29 +121,22 @@ shifts.post('/', authMiddleware, async (c) => {
     
     // 重複チェックなし（同一ユーザー・同日・同カレンダーで複数登録可能）
 
-    // 代理登録: override_user_name が指定された場合、名前でユーザーを検索してuser_idを差し替え
-    let actualUserId = userId;
-    if (userRole === 'admin' && override_user_name) {
-      const targetUser = await c.env.DB.prepare(
-        'SELECT id FROM users WHERE name = ? LIMIT 1'
-      ).bind(override_user_name.trim()).first<{ id: number }>();
-      if (targetUser) {
-        actualUserId = targetUser.id;
-      }
-      // 見つからない場合はそのまま管理者名義で登録（フォールバック）
-    }
+    // 代理登録: override_user_name が指定された場合、override_name に保存（任意名義・DB照合なし）
+    const overrideNameValue = (userRole === 'admin' && override_user_name)
+      ? override_user_name.trim().slice(0, 30)
+      : null;
 
     // シフト作成
     const result = await c.env.DB.prepare(`
       INSERT INTO shifts (
         user_id, calendar_id, shift_date, start_time, end_time, note, status,
         animal_type, activity_type, activity_custom,
-        location_type, location_custom
+        location_type, location_custom, override_name
       )
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
       RETURNING *
     `).bind(
-      actualUserId,
+      userId,
       calendar_id,
       shift_date,
       start_time || null,
@@ -153,9 +147,14 @@ shifts.post('/', authMiddleware, async (c) => {
       activityCustomValue,
       locationTypeValue,
       locationCustomValue,
+      overrideNameValue,
     ).first();
-    
-    return c.json({ message: 'シフトを登録しました', shift: result }, 201);
+
+    // user_name を override_name 優先で組み立てて返す
+    const adminUser = await c.env.DB.prepare('SELECT name FROM users WHERE id = ?').bind(userId).first<{name:string}>();
+    const responseShift = result ? { ...result, user_name: overrideNameValue || adminUser?.name || '' } : result;
+
+    return c.json({ message: 'シフトを登録しました', shift: responseShift }, 201);
     
   } catch (err) {
     console.error('Create shift error:', err);

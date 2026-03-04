@@ -182,14 +182,14 @@ function renderLogin(prefill) {
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
           <input type="email" id="login-email" required autocomplete="email"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400"
             placeholder="your@email.com" value="${escHtml(email)}">
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">パスワード</label>
           <div class="relative">
             <input type="password" id="login-password" required autocomplete="current-password"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 pr-10"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 pr-10"
               placeholder="パスワードを入力" value="${escHtml(pw)}">
             <button type="button" onclick="togglePw('login-password',this)"
               class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -247,20 +247,20 @@ function renderRegister(prefill) {
             <span class="text-gray-400 text-xs font-normal ml-1">短め推奨（例：やまだ、田中H）</span>
           </label>
           <input type="text" id="reg-name" required autocomplete="name" maxlength="20"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400"
             placeholder="やまだ（短めがオススメ）">
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
           <input type="email" id="reg-email" required autocomplete="email"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400"
             placeholder="your@email.com" value="${escHtml(email)}">
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">パスワード <span class="text-gray-400 text-xs">(8文字以上)</span></label>
           <div class="relative">
             <input type="password" id="reg-password" required minlength="8" autocomplete="new-password"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 pr-10"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 pr-10"
               placeholder="パスワード（8文字以上）" value="${escHtml(pw)}">
             <button type="button" onclick="togglePw('reg-password',this)"
               class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -270,7 +270,7 @@ function renderRegister(prefill) {
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">パスワード（確認）</label>
           <input type="password" id="reg-pw2" required minlength="8" autocomplete="new-password"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400"
             placeholder="パスワードを再入力" value="${escHtml(pw)}">
         </div>
         <button type="submit" id="reg-btn"
@@ -440,7 +440,7 @@ function calNoteBadgeHtml(dateStr) {
   const note = State.dayNotes[dateStr];
   const hasContent = note && note.content && note.content.trim();
   return `<div class="cal-note-bar" onclick="event.stopPropagation();openDayView('${dateStr}',true)" title="${hasContent ? '📌 '+escHtml(note.content) : '掲示板（タップして編集）'}">
-    <span style="font-size:9px;flex-shrink:0">📌</span>
+    <span style="font-size:15px;flex-shrink:0">📌</span>
     ${hasContent
       ? `<span class="cn-text">${escHtml(note.content)}</span>`
       : `<span class="cn-empty">メモを追加…</span>`
@@ -541,7 +541,7 @@ function listNoteBannerHtml(dateStr) {
   if (!hasContent && isGuest) return '';
   // 複数行の先頭行のみプレビュー
   const previewText = hasContent ? note.content.split('\n')[0] : '';
-  const editIcon = !isGuest ? '<span style="font-size:9px;color:#d97706;flex-shrink:0"><i class="fas fa-pencil-alt"></i></span>' : '';
+  const editIcon = !isGuest ? '<span style="font-size:15px;color:#d97706;flex-shrink:0"><i class="fas fa-pencil-alt"></i></span>' : '';
   const inner = hasContent
     ? '<span class="note-text">' + escHtml(previewText) + '</span>'
     : '<span class="note-empty">この日のひとことを書く…</span>';
@@ -640,12 +640,12 @@ function sosBadgeChipHtml(badge) {
   return '<span title="' + st.label + '｜' + titleTxt + '"'
     + ' style="display:inline-flex;align-items:center;gap:2px;'
     + 'background:' + st.chipBg + ';border:1.5px solid ' + st.chipBorder + ';'
-    + 'border-radius:4px;padding:1px 4px;font-size:9px;font-weight:800;color:' + st.chipColor + ';white-space:nowrap;cursor:default">'
-    + '<span style="font-size:10px">' + st.icon + '</span>'
-    + '<span style="color:' + cal + ';font-size:8px">●</span>'
+    + 'border-radius:4px;padding:1px 4px;font-size:15px;font-weight:800;color:' + st.chipColor + ';white-space:nowrap;cursor:default">'
+    + '<span style="font-size:16px">' + st.icon + '</span>'
+    + '<span style="color:' + cal + ';font-size:16px">●</span>'
     + escHtml(at.emoji) + ' '
     + escHtml((badge.calendar_name||'').slice(0,3))
-    + '<span style="margin-left:2px;font-size:8px">' + st.label + '</span>'
+    + '<span style="margin-left:2px;font-size:16px">' + st.label + '</span>'
     + '</span>';
 }
 
@@ -690,8 +690,8 @@ function locationCountHtml(shifts) {
   const entries = Object.values(key2);
   if (entries.length === 0) return '';
   const items = entries.map(({short, al, color, count}) =>
-    `<span style="display:inline-flex;align-items:center;gap:0px;white-space:nowrap;font-size:7px;line-height:1.4">
-      <span style="color:${color};font-size:7px">●</span><span style="color:#374151;font-weight:600">${escHtml(short)}${escHtml(al)}${count}</span>
+    `<span style="display:inline-flex;align-items:center;gap:0px;white-space:nowrap;font-size:15px;line-height:1.4">
+      <span style="color:${color};font-size:15px">●</span><span style="color:#374151;font-weight:600">${escHtml(short)}${escHtml(al)}${count}</span>
     </span>`
   ).join('');
   return `<div style="margin-top:auto;padding-top:2px;border-top:1px dashed #e5e7eb;display:flex;flex-wrap:wrap;gap:1px 2px;margin-left:1px;margin-right:1px">${items}</div>`;
@@ -841,10 +841,10 @@ function buildQuickDetail(selDate, map) {
           const ss = SLOT_STYLE[e.slotKey];
           return '<span style="display:inline-flex;align-items:center;gap:2px;'
             + 'background:'+ss.bg+';border:1.5px solid '+ss.bc+';'
-            + 'border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700;color:#374151;white-space:nowrap">'
-            + '<span style="color:'+e.calColor+';font-size:9px">●</span>'
-            + '<span style="font-size:11px;font-weight:700;color:'+(ACTIVITY_TYPES[e.actKey]||ACTIVITY_TYPES.other_custom).color+'">'+(ACT_SHORT[e.actKey]||'他')+'</span>'
-            + '<span style="color:'+ss.hc+';font-size:11px;font-weight:800">'+ss.label+'</span>'
+            + 'border-radius:6px;padding:2px 6px;font-size:16px;font-weight:700;color:#374151;white-space:nowrap">'
+            + '<span style="color:'+e.calColor+';font-size:15px">●</span>'
+            + '<span style="font-size:15px;font-weight:700;color:'+(ACTIVITY_TYPES[e.actKey]||ACTIVITY_TYPES.other_custom).color+'">'+(ACT_SHORT[e.actKey]||'他')+'</span>'
+            + '<span style="color:'+ss.hc+';font-size:15px;font-weight:800">'+ss.label+'</span>'
             + escHtml(e.short)
             + '<span style="color:#3b82f6;margin-left:2px">'+e.count+'</span>'
             + '</span>';
@@ -861,7 +861,7 @@ function buildQuickDetail(selDate, map) {
     : [];
   const noteHtml = lines.length
     ? `<div style="margin:4px 10px 2px;padding:6px 10px;background:#fffbeb;border-radius:8px;border-left:3px solid #f59e0b">` +
-      lines.map(l => `<div style="font-size:12px;color:#92400e;line-height:1.5">📌 ${escHtml(l)}</div>`).join('') +
+      lines.map(l => `<div style="font-size:16px;color:#92400e;line-height:1.5">📌 ${escHtml(l)}</div>`).join('') +
       `</div>`
     : '';
 
@@ -893,26 +893,26 @@ function buildQuickDetail(selDate, map) {
         + 'background:' + (isMine?'#eff6ff':'#fff') + ';'
         + 'border:1.5px solid ' + (isMine?'#93c5fd':'#e5e7eb') + ';'
         + 'border-radius:20px;padding:4px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent">'
-        + '<span style="font-size:12px">' + emoji + '</span>'
-        + '<span style="font-size:13px;font-weight:' + (isMine?'700':'500') + ';color:' + (isMine?'#1d4ed8':color) + '">' + escHtml(s.user_name) + '</span>'
-        + (s.start_time ? '<span style="font-size:10px;color:#9ca3af">' + s.start_time.slice(0,5) + '</span>' : '')
+        + '<span style="font-size:16px">' + emoji + '</span>'
+        + '<span style="font-size:15px;font-weight:' + (isMine?'700':'500') + ';color:' + (isMine?'#1d4ed8':color) + '">' + escHtml(s.user_name) + '</span>'
+        + (s.start_time ? '<span style="font-size:16px;color:#9ca3af">' + s.start_time.slice(0,5) + '</span>' : '')
         + '</div>';
     }).join('');
     return `<div style="padding:4px 10px 6px">
-      <div style="font-size:11px;font-weight:800;color:${hc};margin-bottom:4px;letter-spacing:0.03em">${label}</div>
+      <div style="font-size:15px;font-weight:800;color:${hc};margin-bottom:4px;letter-spacing:0.03em">${label}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
     </div>`;
   }).filter(Boolean).join('');
 
   const emptyHtml = dayShifts.length === 0
-    ? `<div style="text-align:center;color:#9ca3af;font-size:14px;padding:32px 0">この日のシフトはありません</div>`
+    ? `<div style="text-align:center;color:#9ca3af;font-size:16px;padding:32px 0">この日のシフトはありません</div>`
     : '';
 
   const addBtn = !isGuest
     ? `<button onclick="openShiftForm('${sd}')"
         style="display:flex;align-items:center;justify-content:center;gap:6px;width:calc(100% - 20px);` +
         `margin:8px 10px 16px;background:#3b82f6;color:#fff;border:none;border-radius:10px;` +
-        `padding:10px;font-size:13px;font-weight:600;cursor:pointer">` +
+        `padding:10px;font-size:15px;font-weight:600;cursor:pointer">` +
         `<i class="fas fa-plus"></i>この日にシフトを登録</button>`
     : '';
 
@@ -934,16 +934,16 @@ function buildQuickDetail(selDate, map) {
           var items = groups[u].map(function(b) {
             var at = ACTIVITY_TYPES[b.activity_type] || ACTIVITY_TYPES.other_animal;
             return '<div style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid ' + st.itemBorder + ';border-radius:8px;padding:3px 8px">'
-              + '<span style="color:' + (b.calendar_color||'#9ca3af') + ';font-size:10px">●</span>'
-              + '<span style="font-size:12px">' + at.emoji + '</span>'
-              + '<span style="font-size:12px;font-weight:700;color:#1f2937">' + escHtml(b.calendar_name||'') + '</span>'
-              + '<span style="font-size:11px;font-weight:600;color:' + st.titleColor + '">' + escHtml(at.label.replace(/^[^\s]+\s/,'')) + '</span>'
-              + (b.message ? '<span style="font-size:10px;color:#6b7280">(' + escHtml(b.message) + ')</span>' : '')
+              + '<span style="color:' + (b.calendar_color||'#9ca3af') + ';font-size:16px">●</span>'
+              + '<span style="font-size:16px">' + at.emoji + '</span>'
+              + '<span style="font-size:16px;font-weight:700;color:#1f2937">' + escHtml(b.calendar_name||'') + '</span>'
+              + '<span style="font-size:15px;font-weight:600;color:' + st.titleColor + '">' + escHtml(at.label.replace(/^[^\s]+\s/,'')) + '</span>'
+              + (b.message ? '<span style="font-size:16px;color:#6b7280">(' + escHtml(b.message) + ')</span>' : '')
               + '</div>';
           }).join('');
           return '<div style="margin:4px 10px 2px;padding:6px 10px;background:' + st.blockBg + ';border-radius:8px;border-left:3px solid ' + st.blockBorder + '">'
-            + '<div style="font-size:11px;font-weight:800;color:' + st.titleColor + ';margin-bottom:4px">'
-            + '<span style="font-size:13px">' + st.icon + '</span> ' + st.label + '</div>'
+            + '<div style="font-size:15px;font-weight:800;color:' + st.titleColor + ';margin-bottom:4px">'
+            + '<span style="font-size:15px">' + st.icon + '</span> ' + st.label + '</div>'
             + '<div style="display:flex;flex-wrap:wrap;gap:4px">' + items + '</div>'
             + '</div>';
         }).join('');
@@ -952,8 +952,8 @@ function buildQuickDetail(selDate, map) {
 
   return '<div>'
     + '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px 4px;border-bottom:1px solid #e5e7eb;background:#fff;position:sticky;top:0;z-index:1">'
-    + '<span style="font-size:14px;font-weight:800;color:' + (isToday?'#1d4ed8':'#1f2937') + '">' + dateLabel + '</span>'
-    + '<span style="font-size:12px;color:#9ca3af">' + dayShifts.length + '名参加</span>'
+    + '<span style="font-size:16px;font-weight:800;color:' + (isToday?'#1d4ed8':'#1f2937') + '">' + dateLabel + '</span>'
+    + '<span style="font-size:16px;color:#9ca3af">' + dayShifts.length + '名参加</span>'
     + '</div>'
     + sosHtml
     + noteHtml
@@ -1048,7 +1048,7 @@ function renderMonthView() {
 
   // ヘッダー行
   const headerHtml = DAYS.map((d, ci) =>
-    `<div style="width:${colWidths[ci].toFixed(2)}%;flex-shrink:0;text-align:center;font-size:11px;font-weight:600;color:${DAY_COLORS[ci]};padding:3px 0;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;box-sizing:border-box">${d}</div>`
+    `<div style="width:${colWidths[ci].toFixed(2)}%;flex-shrink:0;text-align:center;font-size:15px;font-weight:600;color:${DAY_COLORS[ci]};padding:3px 0;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;box-sizing:border-box">${d}</div>`
   ).join('');
 
   // データ行
@@ -1073,12 +1073,12 @@ function renderMonthView() {
 
       // 日付ラベル
       const dayLabel = isToday
-        ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#3b82f6;color:white;font-size:10px;font-weight:700">${day}</span>`
+        ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#3b82f6;color:white;font-size:16px;font-weight:700">${day}</span>`
         : isTomorrow
-        ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#f97316;color:white;font-size:10px;font-weight:700">${day}</span>`
-        : `<span style="font-size:10px;font-weight:700;color:${DAY_COLORS[c]}">${day}</span>`;
+        ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#f97316;color:white;font-size:16px;font-weight:700">${day}</span>`
+        : `<span style="font-size:16px;font-weight:700;color:${DAY_COLORS[c]}">${day}</span>`;
 
-      const cntLabel = dayShifts.length > 0 ? `<span style="font-size:8px;color:#9ca3af">${dayShifts.length}</span>` : '';
+      const cntLabel = dayShifts.length > 0 ? `<span style="font-size:16px;color:#9ca3af">${dayShifts.length}</span>` : '';
 
       // シフトバッジ（時間帯グループ）
       const slotMap = {morning:[],afternoon:[],night:[]};
@@ -1086,13 +1086,13 @@ function renderMonthView() {
       let badges = '';
       SLOTS.forEach(({key,mark,hc}) => {
         if (!slotMap[key].length) return;
-        badges += `<div style="font-size:8px;color:${hc};font-weight:800;line-height:1.4;overflow:hidden;white-space:nowrap;letter-spacing:0.02em">${mark}</div>`;
+        badges += `<div style="font-size:16px;color:${hc};font-weight:800;line-height:1.4;overflow:hidden;white-space:nowrap;letter-spacing:0.02em">${mark}</div>`;
         slotMap[key].forEach(s => {
           const color = s.calendar_color||'#4f8ef7';
           badges += '<div style="display:flex;align-items:center;gap:1px;overflow:hidden;cursor:pointer;padding-left:2px"'
             + ' onclick="event.stopPropagation();showDetailById(' + s.id + ')">'
-            + '<span style="font-size:8px;font-weight:700;color:' + color + ';flex-shrink:0">' + getActivityShort(s) + '</span>'
-            + '<span style="font-size:9px;font-weight:600;color:' + color + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(s.user_name) + '</span>'
+            + '<span style="font-size:16px;font-weight:700;color:' + color + ';flex-shrink:0">' + getActivityShort(s) + '</span>'
+            + '<span style="font-size:15px;font-weight:600;color:' + color + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(s.user_name) + '</span>'
             + '</div>';
         });
       });
@@ -1294,7 +1294,7 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">日付 <span class="text-red-500">*</span></label>
           <input type="date" id="sf-date" value="${dateVal}" required
-            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
 
         <!-- 時刻 -->
@@ -1318,12 +1318,12 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
             <div>
               <label class="block text-xs text-gray-500 mb-1">開始時刻（直接入力も可）</label>
               <input type="time" id="sf-start"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
             </div>
             <div>
               <label class="block text-xs text-gray-500 mb-1">終了時刻（直接入力も可）</label>
               <input type="time" id="sf-end"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
             </div>
           </div>
         </div>
@@ -1332,7 +1332,7 @@ function openShiftForm(defaultDate = null, adminOverrideName = null) {
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">メモ</label>
           <textarea id="sf-note" rows="2" placeholder="備考・メモ（任意）"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"></textarea>
+            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"></textarea>
         </div>
 
         <div class="flex gap-2 pt-1">
@@ -1879,21 +1879,21 @@ function openEditForm(shiftStr) {
         <div class="grid grid-cols-2 gap-3">
           <div><label class="block text-sm font-medium text-gray-700 mb-1">開始時刻</label>
             <input type="time" id="ef-start" value="${s.start_time||''}"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
           </div>
           <div><label class="block text-sm font-medium text-gray-700 mb-1">終了時刻</label>
             <input type="time" id="ef-end" value="${s.end_time||''}"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
           </div>
         </div>
         <div><label class="block text-sm font-medium text-gray-700 mb-1">メモ</label>
           <textarea id="ef-note" rows="2"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none">${escHtml(s.note||'')}</textarea>
+            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none">${escHtml(s.note||'')}</textarea>
         </div>
         ${isAdmin ? `
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">ステータス（管理者のみ）</label>
-          <select id="ef-status" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <select id="ef-status" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
             <option value="pending" ${s.status==='pending'?'selected':''}>登録済み</option>
             <option value="approved" ${s.status==='approved'?'selected':''}>承認済</option>
             <option value="rejected" ${s.status==='rejected'?'selected':''}>却下</option>
@@ -1995,7 +1995,7 @@ function openProfileModal() {
           </label>
           <input type="text" id="profile-name" maxlength="20" placeholder="新しい名前を入力"
             value="${escHtml(State.user.name)}"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
