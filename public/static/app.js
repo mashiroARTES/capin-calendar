@@ -885,7 +885,11 @@ function buildQuickDetail(selDate, map) {
 
     const slotRowsHtml = SLOT_DEF.map(({key, label, hc, bg, bc}) => {
       const actGroups = slotActMap[key];
-      const actKeys   = ACT_KEY_ORDER.filter(ak => actGroups[ak] && actGroups[ak].length);
+      // 実際にシフトがあるact + 常時表示スロットで指定されているact の和集合
+      const alwaysActs = new Set((loc._alwaysSlots || []).filter(a => a.slot === key).map(a => a.act));
+      const actKeys   = ACT_KEY_ORDER.filter(ak => (actGroups[ak] !== undefined) || alwaysActs.has(ak));
+      // alwaysActsにあるが slotActMap に未登録のものを空配列で初期化
+      alwaysActs.forEach(ak => { if (!actGroups[ak]) actGroups[ak] = []; });
       if (!actKeys.length) return '';
 
       const actRowsHtml = actKeys.map(ak => {
@@ -1266,7 +1270,10 @@ function renderListView() {
       // 時間帯セクション
       const slotSectionsHtml = SLOT_DEFS.map(({key, label, hc, bg, bc}) => {
         const actGroups = slotActMap[key];
-        const actKeys   = ACT_KEY_ORDER.filter(ak => actGroups[ak] && actGroups[ak].length);
+        // 実際にシフトがあるact + 常時表示スロットのact の和集合
+        const alwaysActs2 = new Set((loc._alwaysSlots || []).filter(a => a.slot === key).map(a => a.act));
+        const actKeys   = ACT_KEY_ORDER.filter(ak => (actGroups[ak] !== undefined) || alwaysActs2.has(ak));
+        alwaysActs2.forEach(ak => { if (!actGroups[ak]) actGroups[ak] = []; });
         if (!actKeys.length) return '';
 
         const actRowsHtml = actKeys.map(ak => {
