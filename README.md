@@ -103,7 +103,7 @@
 | **日付** | 活動する日 |
 | **場所** | 第１シェルター / 第２シェルター / パル動物病院 / その他 |
 | **活動内容** | 🐶犬 / 🐱猫 / 🐾動物その他 / 💼事務 / 🤝折衝 / 📦支援物資 / 🚗病院搬送 / 🏠センター引き出し / 🪤捕獲 / 🏥病院受付 / ✏️その他 |
-| **時間帯** | 朝 / 昼 / 夕 の3択ボタン |
+| **時間帯** | 午前 / 午後 の2択ボタン（指定なしも可） |
 | **メモ** | 時間指定など（例：10時〜）任意 |
 
 > 同じ日に複数のシフトを登録できます
@@ -237,7 +237,7 @@ CAPINカレンダー
 | user_id | INTEGER | 登録ユーザー |
 | calendar_id | INTEGER | 場所（カレンダー） |
 | shift_date | TEXT | 活動日（YYYY-MM-DD） |
-| start_time | TEXT | 時間帯キー（`morning` / `afternoon` / `night`）または HH:MM |
+| start_time | TEXT | 時間帯キー（`morning`=午前 / `night`=午後）または HH:MM |
 | end_time | TEXT | 終了時刻（HH:MM、現在は未使用） |
 | activity_type | TEXT | 活動種別（`dog` / `cat` / `other_animal` / `office` / `negotiation` / `supplies` / `transport` / `rescue` / `capture` / `hospital_reception` / `other_custom`） |
 | activity_custom | TEXT | 活動「その他」時の任意テキスト |
@@ -341,7 +341,7 @@ npx wrangler pages secret put JWT_SECRET --project-name capin-calendar
 
 ### クイックビューの表示構造
 - [x] **場所カード** ごとにグループ化（第１シェルター / 第２シェルター / パル動物病院）
-- [x] カード内を **活動内容 → 時間帯（朝・昼・夕）** の順で表示
+- [x] カード内を **活動内容 → 時間帯（午前・午後）** の順で表示
 - [x] 支援物資・病院受付は時間帯なしでまとめて1行表示
 - [x] 名前チップの右にメモ（時間指定など）をイタリックで表示
 - [x] ヘッダー右と下部の **2箇所に「登録」ボタン**を配置
@@ -352,7 +352,7 @@ npx wrangler pages secret put JWT_SECRET --project-name capin-calendar
 - [x] シフト登録・編集・削除
 - [x] 活動種別 11種（犬・猫・動物その他・事務・折衝・支援物資・病院搬送・センター引き出し・捕獲・病院受付・その他カスタム）
 - [x] 場所指定（シェルター選択 or 自由入力）
-- [x] 時間帯（朝 / 昼 / 夕）3択ボタン
+- [x] 時間帯（午前 / 午後）2択ボタン（指定なしも可）
 - [x] メモ欄（時間指定などを自由入力）
 
 ### 掲示板・情報共有
@@ -369,6 +369,7 @@ npx wrangler pages secret put JWT_SECRET --project-name capin-calendar
 - [x] SOSバッジの作成・一覧・削除
 - [x] ユーザー一覧・権限変更
 - [x] 代理シフト登録（任意名義・アカウント不要）
+- [x] **一括シフト登録**（/区切りで複数名を一度に登録）
 - [x] 全シフトの編集・削除・ステータス変更
 
 ## 🔧 今後の改善候補
@@ -394,4 +395,4 @@ npx wrangler pages secret put JWT_SECRET --project-name capin-calendar
 
 ---
 
-*最終更新: 2026-03-04*
+*最終更新: 2026-03-06*
