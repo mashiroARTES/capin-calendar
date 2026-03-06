@@ -852,7 +852,13 @@ function buildQuickDetail(selDate, map) {
     locMap[locKey].shifts.push(s);
   });
   // 常時表示スロット：人がいなくてもlocMapに枠を確保
+  // 場所フィルターが有効な場合は、その場所に対応するエントリのみ追加
   ALWAYS_SHOW_SLOTS.forEach(({loc: locName, slot, act}) => {
+    // 場所タブで絞り込み中の場合：該当カレンダーの name と一致するものだけ追加
+    if (State.currentCalendarSlug) {
+      const filteredCal = State.calendars.find(c => c.slug === State.currentCalendarSlug);
+      if (!filteredCal || filteredCal.name !== locName) return;
+    }
     if (!locMap[locName]) {
       // カレンダー情報をState.calendarsから探す
       const cal = State.calendars.find(c => c.name === locName);
