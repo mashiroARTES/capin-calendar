@@ -345,7 +345,10 @@ function renderShell() {
         <div class="flex items-center gap-2 flex-shrink-0">
           <span class="text-2xl paw-icon">🐾</span>
           <div class="hidden sm:block">
-            <div class="text-base font-bold text-gray-800 leading-tight">CAPINカレンダー</div>
+            <div class="flex items-center gap-2 leading-tight">
+              <span class="text-base font-bold text-gray-800">CAPINカレンダー</span>
+              <span style="font-size:10px;font-weight:700;color:#fff;background:#f97316;border-radius:4px;padding:1px 6px;letter-spacing:0.03em;white-space:nowrap;">オープンテスト中</span>
+            </div>
             <div class="text-xs text-gray-400 leading-tight">ボランティアシフト管理</div>
           </div>
         </div>
