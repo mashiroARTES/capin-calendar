@@ -1289,18 +1289,9 @@ function renderListView() {
       if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id, calendarId: s.calendar_id };
       locMap[locKey].shifts.push(s);
     });
-    // 常時表示スロット：人がいなくてもlocMapに枠を確保
-    ALWAYS_SHOW_SLOTS.forEach(({loc: locName, slot, act}) => {
-      if (!locMap[locName]) {
-        const cal = State.calendars.find(c => c.name === locName);
-        const calColor = cal ? cal.color : '#9ca3af';
-        locMap[locName] = { label: locName, color: calColor, shifts: [], sortKey: cal ? cal.id : 999 };
-      }
-      if (!locMap[locName]._alwaysSlots) locMap[locName]._alwaysSlots = [];
-      locMap[locName]._alwaysSlots.push({ slot, act });
-    });
+    // 一覧ビューはシフトがある場所のみ表示（ALWAYS_SHOW_SLOTSは使わない）
 
-    const locEntries = Object.values(locMap).sort((a,b) => a.sortKey - b.sortKey);
+    const locEntries = Object.values(locMap).filter(loc => loc.shifts.length > 0).sort((a,b) => a.sortKey - b.sortKey);
 
     // 場所セクションHTML
     const locSectionsHtml = locEntries.map(loc => {
@@ -1312,18 +1303,12 @@ function renderListView() {
         if (!slotActMap[sk][ak]) slotActMap[sk][ak] = [];
         slotActMap[sk][ak].push(s);
       });
-      // 常時表示スロットに空配列を確保
-      (loc._alwaysSlots || []).forEach(({slot, act}) => {
-        if (!slotActMap[slot][act]) slotActMap[slot][act] = [];
-      });
 
       // 時間帯セクション
       const slotSectionsHtml = SLOT_DEFS.map(({key, label, hc, bg, bc}) => {
         const actGroups = slotActMap[key];
-        // 実際にシフトがあるact + 常時表示スロットのact の和集合
-        const alwaysActs2 = new Set((loc._alwaysSlots || []).filter(a => a.slot === key).map(a => a.act));
-        const actKeys   = ACT_KEY_ORDER.filter(ak => (actGroups[ak] !== undefined) || alwaysActs2.has(ak));
-        alwaysActs2.forEach(ak => { if (!actGroups[ak]) actGroups[ak] = []; });
+        // 一覧ビューは実際にシフトがある活動のみ表示（常時表示枠は不要）
+        const actKeys   = ACT_KEY_ORDER.filter(ak => actGroups[ak] && actGroups[ak].length > 0);
         if (!actKeys.length) return '';
 
         const actRowsHtml = actKeys.map(ak => {
