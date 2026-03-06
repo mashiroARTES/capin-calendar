@@ -2523,7 +2523,7 @@ async function adminBulkRegister() {
   if (!shift_date) { showBulkMsg('日付を入力してください', 'error'); return; }
   if (!namesRaw.trim()) { showBulkMsg('名前を入力してください', 'error'); return; }
 
-  const names = namesRaw.split('/').map(n => n.trim()).filter(n => n.length > 0);
+  const names = namesRaw.split(/[/／]/).map(n => n.trim()).filter(n => n.length > 0);
   if (names.length === 0) { showBulkMsg('有効な名前がありません', 'error'); return; }
 
   const calObj = State.calendars.find(c => c.id === calendar_id);

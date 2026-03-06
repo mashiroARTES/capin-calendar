@@ -122,10 +122,17 @@ shifts.post('/', authMiddleware, async (c) => {
     
     // 重複チェックなし（同一ユーザー・同日・同カレンダーで複数登録可能）
 
-    // 代理登録: override_user_name が指定された場合、override_name に保存（任意名義・DB照合なし）
-    const overrideNameValue = (userRole === 'admin' && override_user_name)
-      ? override_user_name.trim().slice(0, 30)
-      : null;
+    // 代理登録: override_user_name が指定された場合は DB の実際の role を再確認して保存
+    // JWTのroleが古い（権限変更後に再ログインしていない）場合でも正しく動作させるため
+    let overrideNameValue: string | null = null;
+    if (override_user_name) {
+      const actualUser = await c.env.DB.prepare(
+        'SELECT role FROM users WHERE id = ?'
+      ).bind(userId).first<{ role: string }>();
+      if (actualUser?.role === 'admin') {
+        overrideNameValue = override_user_name.trim().slice(0, 30) || null;
+      }
+    }
 
     // シフト作成
     const result = await c.env.DB.prepare(`
