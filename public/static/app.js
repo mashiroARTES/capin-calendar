@@ -825,22 +825,20 @@ function buildQuickDetail(selDate, map) {
   const toSlotKey = t => {
     if (!t) return 'night';
     if (t === 'morning')   return 'morning';
-    if (t === 'afternoon' || t === 'noon') return 'afternoon';
+    if (t === 'afternoon' || t === 'noon') return 'night';
     if (t === 'night' || t === 'evening') return 'night';
     const h = parseInt(t.slice(0,2),10);
     if (h>=3&&h<12)  return 'morning';
-    if (h>=12&&h<17) return 'afternoon';
     return 'night';
   };
 
   // 時間帯定義
   const SLOT_DEF = [
-    {key:'morning',  label:'朝', hc:'#d97706', bg:'#fffbeb', bc:'#fde68a'},
-    {key:'afternoon',label:'昼', hc:'#059669', bg:'#ecfdf5', bc:'#a7f3d0'},
-    {key:'night',    label:'夜', hc:'#4f46e5', bg:'#eef2ff', bc:'#c7d2fe'},
+    {key:'morning',  label:'午前', hc:'#d97706', bg:'#fffbeb', bc:'#fde68a'},
+    {key:'night',    label:'午後', hc:'#4f46e5', bg:'#eef2ff', bc:'#c7d2fe'},
   ];
   const ACT_KEY_ORDER = Object.keys(ACTIVITY_TYPES);
-  const SLOT_LABEL = {morning:'朝', afternoon:'昼', night:'夜'};
+  const SLOT_LABEL = {morning:'午前', night:'午後'};
 
   // ── 場所グループ化 → 場所内でスロット×活動グループ化 ──
   const locMap = {};
@@ -923,7 +921,7 @@ function buildQuickDetail(selDate, map) {
         + 'border-radius:20px;padding:3px 10px;cursor:pointer;white-space:nowrap;'
         + '-webkit-tap-highlight-color:transparent">'
         + '<span style="font-size:15px;font-weight:' + (isMine ? '700' : '500') + ';'
-        + 'color:' + (isMine ? '#1d4ed8' : '#1f2937') + '">' + escHtml(s.user_name) + '</span>'
+        + 'color:#111827">' + escHtml(s.user_name) + '</span>'
         + memoSpan
         + '</span>';
     }).join('');
@@ -961,7 +959,7 @@ function buildQuickDetail(selDate, map) {
             + '<span style="display:inline-flex;align-items:center;'
             + 'background:' + bg + ';border:1.5px solid ' + bc + ';'
             + 'border-radius:6px;padding:1px 7px;flex-shrink:0">'
-            + '<span style="font-size:13px;font-weight:800;color:' + hc + '">' + label + '</span>'
+            + '<span style="font-size:13px;font-weight:800;color:#111827">' + label + '</span>'
             + '</span>'
             + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">'
             + chips + emptyChip + '</div>'
@@ -1146,13 +1144,11 @@ function renderMonthView() {
     if (!t) return 'night';
     const h = parseInt(t.slice(0,2),10);
     if (h>=3 && h<12) return 'morning';
-    if (h>=12 && h<17) return 'afternoon';
     return 'night';
   };
   const SLOTS = [
-    {key:'morning',  mark:'朝', hc:'#d97706'},
-    {key:'afternoon',mark:'昼', hc:'#059669'},
-    {key:'night',    mark:'夜', hc:'#4f46e5'},
+    {key:'morning',  mark:'午前', hc:'#d97706'},
+    {key:'night',    mark:'午後', hc:'#4f46e5'},
   ];
 
   // ヘッダー行
@@ -1258,18 +1254,16 @@ function renderListView() {
 
   // 時間帯定義
   const SLOT_DEFS = [
-    {key:'morning',  label:'朝', hc:'#d97706', bg:'#fffbeb', bc:'#fde68a'},
-    {key:'afternoon',label:'昼', hc:'#059669', bg:'#ecfdf5', bc:'#a7f3d0'},
-    {key:'night',    label:'夜', hc:'#4f46e5', bg:'#eef2ff', bc:'#c7d2fe'},
+    {key:'morning',  label:'午前', hc:'#d97706', bg:'#fffbeb', bc:'#fde68a'},
+    {key:'night',    label:'午後', hc:'#4f46e5', bg:'#eef2ff', bc:'#c7d2fe'},
   ];
   const toSlot = t => {
     if (!t) return 'night';
     if (t === 'morning')   return 'morning';
-    if (t === 'afternoon' || t === 'noon') return 'afternoon';
+    if (t === 'afternoon' || t === 'noon') return 'night';
     if (t === 'night' || t === 'evening') return 'night';
     const h = parseInt(t.slice(0,2),10);
     if (h>=3&&h<12)  return 'morning';
-    if (h>=12&&h<17) return 'afternoon';
     return 'night';
   };
   const ACT_KEY_ORDER = Object.keys(ACTIVITY_TYPES);
@@ -1347,7 +1341,7 @@ function renderListView() {
               + 'border-radius:20px;padding:3px 10px;cursor:pointer;white-space:nowrap;'
               + '-webkit-tap-highlight-color:transparent">'
               + '<span style="font-size:15px;font-weight:' + (isMine ? '700' : '500') + ';'
-              + 'color:' + (isMine ? '#1d4ed8' : '#1f2937') + '">' + escHtml(s.user_name) + '</span>'
+              + 'color:#111827">' + escHtml(s.user_name) + '</span>'
               + memoChip
               + '</span>';
           }).join('');
@@ -1508,15 +1502,11 @@ function openShiftForm(defaultDate = null, adminOverrideName = null, presetOptio
           <div class="flex gap-2">
             <button type="button" onclick="setTimeSlot('morning')"
               class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-yellow-300 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 transition-colors" id="slot-btn-morning">
-              朝
-            </button>
-            <button type="button" onclick="setTimeSlot('noon')"
-              class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition-colors" id="slot-btn-noon">
-              昼
+              午前
             </button>
             <button type="button" onclick="setTimeSlot('evening')"
               class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors" id="slot-btn-evening">
-              夕
+              午後
             </button>
           </div>
           <input type="hidden" id="sf-slot" value="">
@@ -1562,7 +1552,7 @@ function openShiftForm(defaultDate = null, adminOverrideName = null, presetOptio
   // presetSlot があれば時間帯ボタンを事前選択
   if (presetSlot) {
     // morning/afternoon/night → slot-btn- の対応（フォームは morning/noon/evening）
-    const slotBtnKey = presetSlot === 'night' ? 'evening' : presetSlot === 'afternoon' ? 'noon' : 'morning';
+    const slotBtnKey = presetSlot === 'night' ? 'evening' : presetSlot === 'afternoon' ? 'evening' : 'morning';
     setTimeout(() => setTimeSlot(slotBtnKey), 0);
   }
 
@@ -1590,9 +1580,9 @@ function openShiftForm(defaultDate = null, adminOverrideName = null, presetOptio
     const slotEl = document.getElementById('sf-slot');
     if (slotEl) slotEl.value = slot;
     // slot → internal key (evening->night)
-    const slotKey = slot === 'evening' ? 'night' : slot;
+    const slotKey = (slot === 'evening' || slot === 'noon') ? 'night' : slot;
     // ボタンのハイライト切替
-    ['morning','noon','evening'].forEach(k => {
+    ['morning','evening'].forEach(k => {
       const btn = document.getElementById('slot-btn-' + k);
       if (!btn) return;
       const active = k === slot;
@@ -1807,13 +1797,11 @@ function openDayView(dateStr, focusNote = false) {
       if (!t) return 'night';
       const h = parseInt(t.slice(0,2), 10);
       if (h >= 3 && h < 12) return 'morning';
-      if (h >= 12 && h < 17) return 'afternoon';
       return 'night';
     };
     const SLOT_DEF = [
-      { key: 'morning',   icon: '朝', label: '朝', hc: '#d97706' },
-      { key: 'afternoon', icon: '昼',  label: '昼', hc: '#059669' },
-      { key: 'night',     icon: '夜', label: '夜', hc: '#4f46e5' },
+      { key: 'morning',   icon: '午前', label: '午前', hc: '#d97706' },
+      { key: 'night',     icon: '午後', label: '午後', hc: '#4f46e5' },
     ];
 
     let summaryHtml = '';
@@ -2091,15 +2079,11 @@ function openEditForm(shiftStr) {
           <div class="flex gap-2">
             <button type="button" onclick="setEditSlot('morning')"
               class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-yellow-300 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 transition-colors" id="eslot-btn-morning">
-              朝
-            </button>
-            <button type="button" onclick="setEditSlot('noon')"
-              class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition-colors" id="eslot-btn-noon">
-              昼
+              午前
             </button>
             <button type="button" onclick="setEditSlot('evening')"
               class="flex-1 py-2 rounded-lg text-base font-bold border-2 border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors" id="eslot-btn-evening">
-              夕
+              午後
             </button>
           </div>
           <input type="hidden" id="ef-slot" value="${s.start_time||''}">
@@ -2151,7 +2135,7 @@ function openEditForm(shiftStr) {
   window.setEditSlot = function(slot) {
     const slotEl = document.getElementById('ef-slot');
     if (slotEl) slotEl.value = slot;
-    ['morning','noon','evening'].forEach(k => {
+    ['morning','evening'].forEach(k => {
       const btn = document.getElementById('eslot-btn-' + k);
       if (!btn) return;
       const active = k === slot;
@@ -2163,7 +2147,7 @@ function openEditForm(shiftStr) {
   // 既存のslotを初期ハイライト
   (function(){
     const cur = document.getElementById('ef-slot')?.value || '';
-    const slotToBtn = { morning:'morning', afternoon:'noon', night:'evening', noon:'noon', evening:'evening' };
+    const slotToBtn = { morning:'morning', afternoon:'evening', night:'evening', noon:'evening', evening:'evening' };
     const btnKey = slotToBtn[cur];
     if (btnKey) {
       const btn = document.getElementById('eslot-btn-' + btnKey);
@@ -2369,6 +2353,44 @@ async function openAdminModal() {
   + '<button onclick="adminPromoteByEmail()" class="mt-2 w-full bg-gray-700 hover:bg-gray-800 text-white py-2 rounded-lg text-sm font-semibold transition-colors">権限を変更する</button>'
   + '</div>'
 
+
+  // ── 一括登録 ──────────────────────────────────────────────
+  + '<div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">'
+  + '<h4 class="text-sm font-semibold text-blue-700 mb-3"><i class="fas fa-users mr-1"></i>シフト一括登録（/区切り）</h4>'
+  + '<div class="grid grid-cols-1 gap-2">'
+  + '<div class="flex gap-2 items-center">'
+  + '<label class="text-xs text-gray-600 w-12 flex-shrink-0">日付</label>'
+  + '<input type="date" id="bulk-date" value="' + todayStr + '" class="flex-1 border border-blue-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">'
+  + '</div>'
+  + '<div class="flex gap-2 items-center">'
+  + '<label class="text-xs text-gray-600 w-12 flex-shrink-0">場所</label>'
+  + '<select id="bulk-calendar" class="flex-1 border border-blue-200 rounded-lg px-3 py-1.5 text-sm">' + calOptions + '</select>'
+  + '</div>'
+  + '<div class="flex gap-2 items-center">'
+  + '<label class="text-xs text-gray-600 w-12 flex-shrink-0">活動</label>'
+  + '<select id="bulk-activity" class="flex-1 border border-blue-200 rounded-lg px-3 py-1.5 text-sm">' + actOptions + '</select>'
+  + '</div>'
+  + '<div class="flex gap-2 items-center">'
+  + '<label class="text-xs text-gray-600 w-12 flex-shrink-0">時間帯</label>'
+  + '<div class="flex gap-2 flex-1">'
+  + '<button type="button" id="bulk-slot-morning" onclick="setBulkSlot(\'morning\')" class="flex-1 py-1.5 rounded-lg text-sm font-bold border-2 border-yellow-300 bg-yellow-50 text-yellow-700">午前</button>'
+  + '<button type="button" id="bulk-slot-night" onclick="setBulkSlot(\'night\')" class="flex-1 py-1.5 rounded-lg text-sm font-bold border-2 border-indigo-200 bg-white text-gray-500">午後</button>'
+  + '<button type="button" id="bulk-slot-none" onclick="setBulkSlot(\'none\')" class="flex-1 py-1.5 rounded-lg text-sm font-bold border-2 border-gray-200 bg-white text-gray-500">指定なし</button>'
+  + '</div>'
+  + '</div>'
+  + '<div class="flex gap-2 items-start">'
+  + '<label class="text-xs text-gray-600 w-12 flex-shrink-0 pt-2">名前</label>'
+  + '<div class="flex-1">'
+  + '<input type="text" id="bulk-names" placeholder="例：田中/鈴木/佐藤" class="w-full border border-blue-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">'
+  + '<div class="text-xs text-gray-400 mt-1">/ (スラッシュ) で区切って複数名を入力</div>'
+  + '</div>'
+  + '</div>'
+  + '</div>'
+  + '<button onclick="adminBulkRegister()" class="mt-3 w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold transition-colors">'
+  + '<i class="fas fa-plus-circle mr-1"></i>一括登録する</button>'
+  + '<div id="bulk-msg" class="hidden mt-2 p-2 rounded text-sm"></div>'
+  + '</div>'
+
   // ── ユーザー一覧 ──────────────────────────────────────
   + '<div>'
   + '<h4 class="text-sm font-semibold text-gray-700 mb-2"><i class="fas fa-users mr-1"></i>ユーザー一覧</h4>'
@@ -2382,6 +2404,8 @@ async function openAdminModal() {
   // 非同期でリスト類をロード
   loadAdminUserList();
   loadAdminSosList();
+  // 一括登録フォームの初期スロットを「午前」に設定
+  setTimeout(() => setBulkSlot('morning'), 0);
 }
 
 // SOS一覧をロードしてUIに表示
@@ -2454,6 +2478,100 @@ async function adminDeleteSos(id) {
     renderContent();
   } else {
     showAdminMsg(r.data.error || '削除に失敗しました', 'error');
+  }
+}
+
+// 一括登録スロット選択
+window.setBulkSlot = function(slot) {
+  ['morning','night','none'].forEach(k => {
+    const btn = document.getElementById('bulk-slot-' + k);
+    if (!btn) return;
+    const isSelected = k === slot;
+    if (k === 'morning') {
+      btn.style.borderColor = isSelected ? '#d97706' : '#fde68a';
+      btn.style.background  = isSelected ? '#fef3c7' : '#fff';
+      btn.style.color       = isSelected ? '#92400e' : '#9ca3af';
+    } else if (k === 'night') {
+      btn.style.borderColor = isSelected ? '#4f46e5' : '#c7d2fe';
+      btn.style.background  = isSelected ? '#e0e7ff' : '#fff';
+      btn.style.color       = isSelected ? '#312e81' : '#9ca3af';
+    } else {
+      btn.style.borderColor = isSelected ? '#6b7280' : '#d1d5db';
+      btn.style.background  = isSelected ? '#f3f4f6' : '#fff';
+      btn.style.color       = isSelected ? '#374151' : '#9ca3af';
+    }
+  });
+};
+
+// 一括登録実行
+async function adminBulkRegister() {
+  const dateEl     = document.getElementById('bulk-date');
+  const calEl      = document.getElementById('bulk-calendar');
+  const actEl      = document.getElementById('bulk-activity');
+  const namesEl    = document.getElementById('bulk-names');
+  const bulkMsgEl  = document.getElementById('bulk-msg');
+
+  if (!dateEl || !calEl || !actEl || !namesEl) return;
+
+  const shift_date    = dateEl.value;
+  const calendar_id   = parseInt(calEl.value);
+  const activity_type = actEl.value;
+  const namesRaw      = namesEl.value;
+
+  // スロット判定: ハイライトされているボタンから取得
+  let slot = null;
+  const morningBtn = document.getElementById('bulk-slot-morning');
+  const nightBtn   = document.getElementById('bulk-slot-night');
+  if (morningBtn && morningBtn.style.background && morningBtn.style.background.includes('fef3c7')) slot = 'morning';
+  else if (nightBtn && nightBtn.style.background && nightBtn.style.background.includes('e0e7ff')) slot = 'night';
+
+  const showBulkMsg = (msg, type) => {
+    if (!bulkMsgEl) return;
+    bulkMsgEl.textContent = msg;
+    bulkMsgEl.className = 'mt-2 p-2 rounded text-sm ' + (type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700');
+    bulkMsgEl.classList.remove('hidden');
+  };
+
+  if (!shift_date) { showBulkMsg('日付を入力してください', 'error'); return; }
+  if (!namesRaw.trim()) { showBulkMsg('名前を入力してください', 'error'); return; }
+
+  const names = namesRaw.split('/').map(n => n.trim()).filter(n => n.length > 0);
+  if (names.length === 0) { showBulkMsg('有効な名前がありません', 'error'); return; }
+
+  const calObj = State.calendars.find(c => c.id === calendar_id);
+  const location_type = calObj?.slug || null;
+
+  const btn = document.querySelector('[onclick="adminBulkRegister()"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner w-4 h-4 inline-block"></div> 登録中...'; }
+
+  let successCount = 0;
+  let errorCount   = 0;
+
+  for (const name of names) {
+    const payload = {
+      calendar_id,
+      shift_date,
+      start_time: slot,
+      end_time: null,
+      note: null,
+      activity_type,
+      location_type,
+      override_user_name: name,
+    };
+    const r = await API.post('/shifts', payload);
+    if (r.ok) successCount++;
+    else errorCount++;
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plus-circle mr-1"></i>一括登録する'; }
+
+  if (errorCount === 0) {
+    showBulkMsg(names.length + '件の登録が完了しました 🎉', 'success');
+    namesEl.value = '';
+    await App.loadAndRenderShifts();
+  } else {
+    showBulkMsg(successCount + '件成功、' + errorCount + '件失敗しました', errorCount > 0 ? 'error' : 'success');
+    await App.loadAndRenderShifts();
   }
 }
 
