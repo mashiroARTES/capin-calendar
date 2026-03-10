@@ -477,8 +477,11 @@ function renderContent() {
 
 // 月ビューのセル内に表示するミニ掲示板バー
 function calNoteBadgeHtml(dateStr) {
-  const note = State.dayNotes[dateStr];
-  const hasContent = note && note.content && note.content.trim();
+  // 新構造: { calId: note, 'null': note }。いずれかにコンテンツがあれば表示
+  const noteMap = State.dayNotes[dateStr] || {};
+  const allNotes = Object.values(noteMap).filter(n => n && n.content && n.content.trim());
+  const note = allNotes[0] || null;
+  const hasContent = !!note;
   return `<div class="cal-note-bar" onclick="event.stopPropagation();openDayView('${dateStr}',true)" title="${hasContent ? '📌 '+escHtml(note.content) : '掲示板（タップして編集）'}">
     <span style="font-size:15px;flex-shrink:0">📌</span>
     ${hasContent
@@ -497,7 +500,8 @@ function dayNoteSectionHtml(dateStr) {
   const calSections = cals.map(cal => {
     const key  = String(cal.id);
     const noteMap = State.dayNotes[dateStr] || {};
-    const note = noteMap[key];
+    // カレンダーID付きを優先、なければ旧形式(null)をフォールバック
+    const note = noteMap[key] || noteMap['null'] || null;
     const content = note ? note.content : '';
     const lines = content ? content.split('\n').slice(0, 3) : ['', '', ''];
     while (lines.length < 3) lines.push('');
@@ -591,7 +595,8 @@ async function saveDayNote(dateStr, calendarId) {
 function listNoteBannerHtml(dateStr, calendarId) {
   const noteMap = State.dayNotes[dateStr] || {};
   const key = calendarId == null ? 'null' : String(calendarId);
-  const note = noteMap[key];
+  // calendar_id付きを優先、なければ旧形式(null)をフォールバック
+  const note = noteMap[key] || (key !== 'null' ? noteMap['null'] : null) || null;
   const hasContent = note && note.content && note.content.trim();
   const isGuest = State.guestMode || !State.user;
   if (!hasContent && isGuest) return '';
@@ -1099,7 +1104,8 @@ function buildQuickDetail(selDate, map) {
 function quickMemoHtml(dateStr, calendarId, locColor) {
   if (!calendarId) return '';
   const noteMap = State.dayNotes[dateStr] || {};
-  const note    = noteMap[String(calendarId)];
+  // calendar_id付きのメモを優先、なければ旧形式（calendar_id=null）をフォールバック表示
+  const note    = noteMap[String(calendarId)] || noteMap['null'] || null;
   const lines   = note && note.content ? note.content.split('\n').filter(l => l.trim()) : [];
   const hasNote = lines.length > 0;
   const inputId = 'qv-memo-' + calendarId + '-' + dateStr;
