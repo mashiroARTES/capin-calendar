@@ -78,7 +78,7 @@ const State = {
   guestMode: false,
   calendars: [],
   shifts: [],
-  dayNotes: {},    // { 'YYYY-MM-DD': { content, updated_by_name, updated_at } }
+  dayNotes: {},    // { 'YYYY-MM-DD': { 'null': note, '<calId>': note, ... } }
   sosBadges: [],   // [ { id, badge_date, calendar_id, activity_type, message, ... } ]
   currentCalendarSlug: null,
   currentYear:  new Date().getFullYear(),
@@ -171,7 +171,11 @@ const App = {
     State.sosBadges = [];
     results.forEach(([rShifts, rNotes, rSos]) => {
       if (rShifts.ok) State.shifts = State.shifts.concat(rShifts.data.shifts || []);
-      if (rNotes.ok) (rNotes.data.notes || []).forEach(n => { State.dayNotes[n.note_date] = n; });
+      if (rNotes.ok) (rNotes.data.notes || []).forEach(n => {
+        if (!State.dayNotes[n.note_date]) State.dayNotes[n.note_date] = {};
+        const key = n.calendar_id == null ? 'null' : String(n.calendar_id);
+        State.dayNotes[n.note_date][key] = n;
+      });
       if (rSos.ok)   State.sosBadges = State.sosBadges.concat(rSos.data.badges || []);
     });
 
@@ -456,7 +460,15 @@ function renderContent() {
   }
   if (State.viewMode === 'quick') el.innerHTML = renderQuickView();
   else if (State.viewMode === 'month') el.innerHTML = renderMonthView();
-  else el.innerHTML = renderListView();
+  else {
+    el.innerHTML = renderListView();
+    if (State.listWeekOffset === 0) {
+      setTimeout(() => {
+        const anchor = document.getElementById('list-today-anchor');
+        if (anchor) anchor.scrollIntoView({ behavior: 'auto', block: 'start' });
+      }, 30);
+    }
+  }
 }
 
 // ============================================================
@@ -478,96 +490,111 @@ function calNoteBadgeHtml(dateStr) {
 
 // 日別モーダル内の掲示板UI（表示＋インライン編集、メモ最大3行）
 function dayNoteSectionHtml(dateStr) {
-  const note = State.dayNotes[dateStr];
-  const content = note ? note.content : '';
-  // 3行に分割（改行で区切り、最大3行）
-  const lines = content ? content.split('\n').slice(0, 3) : ['', '', ''];
-  while (lines.length < 3) lines.push('');
-  const updater = note && note.updated_by_name ? note.updated_by_name : '';
   const isGuest = State.guestMode || !State.user;
+  const cals = State.calendars;
 
-  const updaterHtml = updater ? '<span class="text-xs text-amber-500 ml-auto">最終更新: '+escHtml(updater)+'</span>' : '';
+  // カレンダーごとのメモUIを生成
+  const calSections = cals.map(cal => {
+    const key  = String(cal.id);
+    const noteMap = State.dayNotes[dateStr] || {};
+    const note = noteMap[key];
+    const content = note ? note.content : '';
+    const lines = content ? content.split('\n').slice(0, 3) : ['', '', ''];
+    while (lines.length < 3) lines.push('');
+    const updater = note && note.updated_by_name ? note.updated_by_name : '';
+    const updaterHtml = updater ? '<span class="text-xs text-amber-500 ml-auto">最終更新: '+escHtml(updater)+'</span>' : '';
+    const inputId = 'day-note-cal-' + cal.id;
 
-  let bodyHtml;
-  if (isGuest) {
-    const displayLines = lines.filter(l => l.trim());
-    if (displayLines.length > 0) {
-      bodyHtml = displayLines.map(function(l) {
-        return '<div class="text-sm text-amber-700 leading-relaxed">📌 '+escHtml(l)+'</div>';
-      }).join('');
+    let bodyHtml;
+    if (isGuest) {
+      const displayLines = lines.filter(l => l.trim());
+      if (displayLines.length > 0) {
+        bodyHtml = displayLines.map(function(l) {
+          return '<div class="text-sm text-amber-700 leading-relaxed">📌 '+escHtml(l)+'</div>';
+        }).join('');
+      } else {
+        bodyHtml = '<div class="text-sm text-amber-700 opacity-50 italic">まだメモがありません</div>';
+      }
+      bodyHtml += '<p class="text-xs text-amber-500 mt-1.5"><i class="fas fa-lock mr-1"></i>書き込みにはログインが必要です</p>';
     } else {
-      bodyHtml = '<div class="text-sm text-amber-700 opacity-50 italic">まだメモがありません</div>';
+      const charCount = lines.join('\n').replace(/\n$/, '').length;
+      bodyHtml =
+        '<div class="space-y-1.5 mb-2">'
+        + '<div class="flex items-center gap-1.5"><span class="text-xs text-amber-500 w-10 flex-shrink-0">1行目</span>'
+        + '<input id="'+inputId+'-1" type="text" maxlength="100" value="'+escHtml(lines[0])+'"'
+        + ' class="flex-1 text-sm border border-amber-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-amber-400" placeholder="1行目（100文字以内）"></div>'
+        + '<div class="flex items-center gap-1.5"><span class="text-xs text-amber-500 w-10 flex-shrink-0">2行目</span>'
+        + '<input id="'+inputId+'-2" type="text" maxlength="100" value="'+escHtml(lines[1])+'"'
+        + ' class="flex-1 text-sm border border-amber-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-amber-400" placeholder="2行目（任意）"></div>'
+        + '<div class="flex items-center gap-1.5"><span class="text-xs text-amber-500 w-10 flex-shrink-0">3行目</span>'
+        + '<input id="'+inputId+'-3" type="text" maxlength="100" value="'+escHtml(lines[2])+'"'
+        + ' class="flex-1 text-sm border border-amber-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-amber-400" placeholder="3行目（任意）"></div>'
+        + '</div>'
+        + '<div class="flex items-center justify-between mt-1.5">'
+        + '<span id="'+inputId+'-count" class="text-xs text-amber-400">'+charCount+'/300文字</span>'
+        + '<button onclick="saveDayNote(\'' + dateStr + '\','+cal.id+')"'
+        + ' class="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded-lg font-semibold transition-colors flex items-center gap-1">'
+        + '<i class="fas fa-save"></i>保存</button>'
+        + '</div>';
     }
-    bodyHtml += '<p class="text-xs text-amber-500 mt-1.5"><i class="fas fa-lock mr-1"></i>書き込みにはログインが必要です</p>';
-  } else {
-    const charCount = lines.join('\n').replace(/\n$/, '').length;
-    bodyHtml =
-      '<div class="space-y-1.5 mb-2">'
-      + '<div class="flex items-center gap-1.5"><span class="text-xs text-amber-500 w-10 flex-shrink-0">1行目</span>'
-      + '<input id="day-note-line1" type="text" maxlength="100" value="'+escHtml(lines[0])+'"'
-      + ' class="flex-1 text-sm border border-amber-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-amber-400" placeholder="1行目（100文字以内）"></div>'
-      + '<div class="flex items-center gap-1.5"><span class="text-xs text-amber-500 w-10 flex-shrink-0">2行目</span>'
-      + '<input id="day-note-line2" type="text" maxlength="100" value="'+escHtml(lines[1])+'"'
-      + ' class="flex-1 text-sm border border-amber-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-amber-400" placeholder="2行目（任意）"></div>'
-      + '<div class="flex items-center gap-1.5"><span class="text-xs text-amber-500 w-10 flex-shrink-0">3行目</span>'
-      + '<input id="day-note-line3" type="text" maxlength="100" value="'+escHtml(lines[2])+'"'
-      + ' class="flex-1 text-sm border border-amber-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-amber-400" placeholder="3行目（任意）"></div>'
+
+    return '<div class="mb-3 border border-amber-100 rounded-lg p-2.5" style="border-left:3px solid '+escHtml(cal.color||'#f59e0b')+'">'
+      + '<div class="flex items-center gap-2 mb-2">'
+      + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+escHtml(cal.color||'#f59e0b')+'"></span>'
+      + '<span class="text-xs font-bold text-amber-800">'+escHtml(cal.name)+'</span>'
+      + updaterHtml
       + '</div>'
-      + '<div class="flex items-center justify-between mt-1.5">'
-      + '<span id="day-note-count" class="text-xs text-amber-400">'+charCount+'/300文字</span>'
-      + '<button id="day-note-save-btn" onclick="saveDayNote(\''+dateStr+'\')"'
-      + ' class="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded-lg font-semibold transition-colors flex items-center gap-1">'
-      + '<i class="fas fa-save"></i>保存</button>'
+      + bodyHtml
       + '</div>';
-  }
+  }).join('');
 
   return '<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4" id="day-note-section">'
     + '<div class="flex items-center gap-2 mb-2">'
     + '<span class="text-base">📌</span>'
-    + '<span class="text-sm font-bold text-amber-800">ひとこと掲示板（最大3行）</span>'
-    + updaterHtml
+    + '<span class="text-sm font-bold text-amber-800">場所ごとひとこと掲示板</span>'
     + '</div>'
-    + bodyHtml
+    + calSections
     + '</div>';
 }
 
 // 掲示板を保存してUIを更新（3行対応）
-async function saveDayNote(dateStr) {
-  const l1 = document.getElementById('day-note-line1');
-  const l2 = document.getElementById('day-note-line2');
-  const l3 = document.getElementById('day-note-line3');
-  const btn = document.getElementById('day-note-save-btn');
-  if (!btn) return;
-  // 3行を改行結合（末尾の空行は除く）
-  const lines = [l1 ? l1.value.trim() : '', l2 ? l2.value.trim() : '', l3 ? l3.value.trim() : ''];
-  // 末尾の空行を除去
+async function saveDayNote(dateStr, calendarId) {
+  const inputId = 'day-note-cal-' + calendarId;
+  const l1 = document.getElementById(inputId + '-1');
+  const l2 = document.getElementById(inputId + '-2');
+  const l3 = document.getElementById(inputId + '-3');
+  // 保存ボタン（クリックされたbutton要素を特定するため、closest使用）
+  // inline onclickで呼ばれるため event は使えない。代わりにquerySelectorで探す
+  const btnSel = 'button[onclick*="saveDayNote(\'' + dateStr + '\','+calendarId+')"]';
+  const btn = document.querySelector(btnSel);
+  if (!l1) return;
+  const lines = [l1.value.trim(), l2 ? l2.value.trim() : '', l3 ? l3.value.trim() : ''];
   while (lines.length > 0 && lines[lines.length-1] === '') lines.pop();
   const content = lines.join('\n');
-  btn.disabled = true; btn.innerHTML = '<div class="spinner w-3 h-3"></div>';
-  const r = await API.put('/day-notes/' + dateStr, { content });
+  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner w-3 h-3"></div>'; }
+  const r = await API.put('/day-notes/' + dateStr, { content, calendar_id: calendarId });
   if (r.ok) {
-    State.dayNotes[dateStr] = r.data.note;
+    if (!State.dayNotes[dateStr]) State.dayNotes[dateStr] = {};
+    State.dayNotes[dateStr][String(calendarId)] = r.data.note;
     showToast('掲示板を更新しました', 'success', 2000);
-    btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i>保存';
-    const cnt = document.getElementById('day-note-count');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i>保存'; }
+    const cnt = document.getElementById(inputId + '-count');
     if (cnt) cnt.textContent = content.length + '/300文字';
-    if (State.viewMode === 'month') {
-      renderContent();
-    }
+    if (State.viewMode === 'month') renderContent();
   } else {
     showToast(r.data.error || '保存に失敗しました', 'error');
-    btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i>保存';
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i>保存'; }
   }
 }
 
 // 一覧ビューのノートバナー（クリックで日別モーダルへ）
-function listNoteBannerHtml(dateStr) {
-  const note = State.dayNotes[dateStr];
+function listNoteBannerHtml(dateStr, calendarId) {
+  const noteMap = State.dayNotes[dateStr] || {};
+  const key = calendarId == null ? 'null' : String(calendarId);
+  const note = noteMap[key];
   const hasContent = note && note.content && note.content.trim();
   const isGuest = State.guestMode || !State.user;
-  // 内容があるか、ログイン済みのときだけ表示
   if (!hasContent && isGuest) return '';
-  // 複数行の先頭行のみプレビュー
   const previewText = hasContent ? note.content.split('\n')[0] : '';
   const editIcon = !isGuest ? '<span style="font-size:15px;color:#d97706;flex-shrink:0"><i class="fas fa-pencil-alt"></i></span>' : '';
   const inner = hasContent
@@ -978,7 +1005,7 @@ function buildQuickDetail(selDate, map) {
         + 'background:' + at.bg + ';border:1.5px solid ' + at.color + '33;'
         + 'border-radius:6px;padding:3px 8px;margin-bottom:4px">'
         + '<span style="font-size:16px">' + at.emoji + '</span>'
-        + '<span style="font-size:13px;font-weight:700;color:' + at.color + '">'
+        + '<span style="font-size:13px;font-weight:700;color:#111827">'
         + at.label.replace(/^[^\s]+\s/,'') + '</span>'
         + '</div>'
         + innerHtml
@@ -991,22 +1018,49 @@ function buildQuickDetail(selDate, map) {
       + '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
       + 'background:' + loc.color + ';flex-shrink:0"></span>'
       + '<span style="font-size:15px;font-weight:700;color:#1f2937">' + escHtml(loc.label) + '</span>'
-      + '<span style="font-size:12px;color:#9ca3af;margin-left:2px">' + loc.shifts.length + '人</span>'
       + '</div>'
       + slotRowsHtml
       + '</div>';
   }).join('');
 
-  // メモ（一言ボード）
-  const note     = State.dayNotes[sd];
-  const lines    = note && note.content
-    ? note.content.split('\n').filter(l => l.trim())
-    : [];
-  const noteHtml = lines.length
-    ? `<div style="margin:4px 8px 2px;padding:6px 10px;background:#fffbeb;border-radius:8px;border-left:3px solid #f59e0b">` +
-      lines.map(l => `<div style="font-size:15px;color:#92400e;line-height:1.5">📌 ${escHtml(l)}</div>`).join('') +
-      `</div>`
-    : '';
+  // メモ（場所ごと）
+  const noteMap  = State.dayNotes[sd] || {};
+  const noteHtml = State.calendars.map(cal => {
+    const note   = noteMap[String(cal.id)];
+    const lines  = note && note.content ? note.content.split('\n').filter(l => l.trim()) : [];
+    const inputId = 'qv-note-cal-' + cal.id + '-' + sd;
+    if (isGuest) {
+      if (!lines.length) return '';
+      return '<div style="margin:2px 8px;padding:5px 10px;background:#fffbeb;border-radius:8px;border-left:3px solid ' + (cal.color||'#f59e0b') + '">'
+        + '<div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:2px">' + escHtml(cal.name) + '</div>'
+        + lines.map(l => '<div style="font-size:13px;color:#92400e;line-height:1.5">📌 ' + escHtml(l) + '</div>').join('')
+        + '</div>';
+    }
+    // ログイン済み：編集フォーム
+    const content = note ? note.content : '';
+    const ls = content ? content.split('\n').slice(0,3) : ['','',''];
+    while (ls.length < 3) ls.push('');
+    return '<div style="margin:2px 8px;padding:5px 10px;background:#fffbeb;border-radius:8px;border-left:3px solid ' + (cal.color||'#f59e0b') + '">'
+      + '<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">'
+      + '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:' + (cal.color||'#f59e0b') + '"></span>'
+      + '<span style="font-size:11px;font-weight:700;color:#92400e">' + escHtml(cal.name) + '</span>'
+      + (note && note.updated_by_name ? '<span style="font-size:10px;color:#d97706;margin-left:auto">' + escHtml(note.updated_by_name) + '</span>' : '')
+      + '</div>'
+      + ['1行目','2行目','3行目'].map((lbl,i) =>
+          '<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">'
+          + '<span style="font-size:10px;color:#d97706;width:28px;flex-shrink:0">' + lbl + '</span>'
+          + '<input id="' + inputId + '-' + (i+1) + '" type="text" maxlength="100" value="' + escHtml(ls[i]) + '"'
+          + ' style="flex:1;font-size:12px;border:1px solid #fde68a;border-radius:4px;padding:2px 6px;background:#fff;outline:none"'
+          + ' placeholder="' + (i===0?'メモ（100文字以内）':'任意') + '">'
+          + '</div>'
+        ).join('')
+      + '<div style="display:flex;justify-content:flex-end;margin-top:3px">'
+      + '<button onclick="saveQuickViewNote(\'' + sd + '\',' + cal.id + ',\'' + inputId + '\')"\'"'
+      + ' style="font-size:11px;background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:2px 10px;cursor:pointer;font-weight:600">'
+      + '💾 保存</button>'
+      + '</div>'
+      + '</div>';
+  }).join('');
 
   const emptyHtml = dayShifts.length === 0
     ? `<div style="text-align:center;color:#9ca3af;font-size:16px;padding:32px 0">この日のシフトはありません</div>`
@@ -1064,7 +1118,6 @@ function buildQuickDetail(selDate, map) {
     + '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px 4px;border-bottom:1px solid #e5e7eb;background:#fff;position:sticky;top:0;z-index:1">'
     + '<div style="display:flex;align-items:center;gap:8px">'
     + '<span style="font-size:16px;font-weight:800;color:' + (isToday?'#1d4ed8':'#1f2937') + '">' + dateLabel + '</span>'
-    + '<span style="font-size:15px;color:#9ca3af">' + dayShifts.length + '名参加</span>'
     + '</div>'
     + addBtnTop
     + '</div>'
@@ -1074,6 +1127,27 @@ function buildQuickDetail(selDate, map) {
     + emptyHtml
     + addBtn
     + '</div>';
+}
+
+
+// クイックビューのメモ保存
+async function saveQuickViewNote(dateStr, calendarId, inputId) {
+  const l1 = document.getElementById(inputId + '-1');
+  const l2 = document.getElementById(inputId + '-2');
+  const l3 = document.getElementById(inputId + '-3');
+  if (!l1) return;
+  const lines = [l1.value.trim(), l2 ? l2.value.trim() : '', l3 ? l3.value.trim() : ''];
+  while (lines.length > 0 && lines[lines.length-1] === '') lines.pop();
+  const content = lines.join('\n');
+  const r = await API.put('/day-notes/' + dateStr, { content, calendar_id: calendarId });
+  if (r.ok) {
+    if (!State.dayNotes[dateStr]) State.dayNotes[dateStr] = {};
+    State.dayNotes[dateStr][String(calendarId)] = r.data.note;
+    showToast('掲示板を更新しました', 'success', 2000);
+    if (State.viewMode === 'month') renderContent();
+  } else {
+    showToast(r.data.error || '保存に失敗しました', 'error');
+  }
 }
 
 // クイックビューで日付を選択（全体再描画）
@@ -1235,27 +1309,42 @@ function renderMonthView() {
 }
 
 // ============================================================
-// 一覧表示
+// 一覧表示（週単位ナビゲーション）
 // ============================================================
+
+// 一覧ビューの週オフセット（0 = 当日を含む週）
+if (typeof State.listWeekOffset === 'undefined') State.listWeekOffset = 0;
+
+function getWeekRange(offset) {
+  const today = new Date(todayLocal() + 'T12:00:00');
+  // 当日を含む週の月曜日を起点とする
+  const dow = today.getDay(); // 0=Sun
+  const mondayOffset = (dow === 0 ? -6 : 1 - dow);
+  const monday = new Date(today);
+  monday.setDate(monday.getDate() + mondayOffset + offset * 7);
+  const sunday = new Date(monday);
+  sunday.setDate(sunday.getDate() + 6);
+  const fmt = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  return { start: fmt(monday), end: fmt(sunday), startDate: monday, endDate: sunday };
+}
+
 function renderListView() {
   const isGuest = State.guestMode || !State.user;
-  if (State.shifts.length === 0) {
-    return `<div class="flex flex-col items-center justify-center h-64 text-center p-8">
-      <div class="text-5xl mb-4">📅</div>
-      <p class="text-gray-400 mb-4">この月のシフトはありません</p>
-      ${!isGuest ? `<button onclick="openShiftForm()"
-        class="bg-blue-500 text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-600 transition-colors">
-        シフトを登録する
-      </button>` : ''}
-    </div>`;
-  }
+  const todayStr = todayLocal();
+  const dayNames = ['日','月','火','水','木','金','土'];
+  const isAdmin  = State.user && State.user.role === 'admin';
 
-  // 日付でグループ化
-  const grp = {};
-  State.shifts.forEach(s => { (grp[s.shift_date] = grp[s.shift_date] || []).push(s); });
-  const todayStr  = todayLocal();
-  const dayNames  = ['日','月','火','水','木','金','土'];
-  const isAdmin   = State.user && State.user.role === 'admin';
+  const { start, end, startDate, endDate } = getWeekRange(State.listWeekOffset);
+
+  // 表示期間内のシフトのみ抽出
+  const weekShifts = State.shifts.filter(s => s.shift_date >= start && s.shift_date <= end);
+
+  // 表示期間内の全日付を生成（シフトがなくても当日は表示）
+  const allDates = [];
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate()+1)) {
+    const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    allDates.push(ds);
+  }
 
   // 時間帯定義
   const SLOT_DEFS = [
@@ -1273,17 +1362,31 @@ function renderListView() {
   };
   const ACT_KEY_ORDER = Object.keys(ACTIVITY_TYPES);
 
-  let html = '<div class="max-w-screen-xl mx-auto p-3 space-y-4">';
+  // 週ヘッダーラベル
+  const fmtDate = d => { const o = new Date(d+'T12:00:00'); return (o.getMonth()+1)+'月'+o.getDate()+'日'; };
+  const weekLabel = fmtDate(start) + '（' + dayNames[startDate.getDay()] + '）〜' + fmtDate(end) + '（' + dayNames[endDate.getDay()] + '）';
 
-  Object.keys(grp).sort().forEach(date => {
+  // ナビゲーションHTML
+  const navHtml = '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#fff;border-bottom:1px solid #e5e7eb;position:sticky;top:0;z-index:10">'
+    + '<button onclick="changeListWeek(-1)" style="background:#f3f4f6;border:none;border-radius:8px;padding:5px 14px;font-size:15px;cursor:pointer;color:#374151">← 前の週</button>'
+    + '<div style="text-align:center">'
+    + '<div style="font-size:13px;font-weight:700;color:#374151">' + weekLabel + '</div>'
+    + (State.listWeekOffset !== 0 ? '<button onclick="changeListWeek(0,true)" style="font-size:11px;color:#3b82f6;background:none;border:none;cursor:pointer;text-decoration:underline">今週に戻る</button>' : '')
+    + '</div>'
+    + '<button onclick="changeListWeek(1)" style="background:#f3f4f6;border:none;border-radius:8px;padding:5px 14px;font-size:15px;cursor:pointer;color:#374151">次の週 →</button>'
+    + '</div>';
+
+  // 日付カードHTML生成
+  const grp = {};
+  weekShifts.forEach(s => { (grp[s.shift_date] = grp[s.shift_date]||[]).push(s); });
+
+  let daysHtml = allDates.map(date => {
     const d       = new Date(date + 'T12:00:00');
     const dn      = dayNames[d.getDay()];
     const isToday = date === todayStr;
-    const sorted  = grp[date].sort((a,b) => (a.start_time||'99:99') < (b.start_time||'99:99') ? -1 : 1);
+    const sorted  = (grp[date]||[]).sort((a,b) => (a.start_time||'99:99') < (b.start_time||'99:99') ? -1 : 1);
 
-    // ── 場所でグループ化 ──────────────────────────────────────
-    // calendarId（場所）ごとにまとめる。場所の順序はカレンダー順＋「その他」
-    const locMap = {};   // locKey -> { label, color, shifts[] }
+    const locMap = {};
     sorted.forEach(s => {
       const locKey   = getLocationLabel(s) || '（場所未設定）';
       const locLabel = getLocationLabel(s) || '（場所未設定）';
@@ -1291,13 +1394,10 @@ function renderListView() {
       if (!locMap[locKey]) locMap[locKey] = { label: locLabel, color: calColor, shifts: [], sortKey: s.calendar_id, calendarId: s.calendar_id };
       locMap[locKey].shifts.push(s);
     });
-    // 一覧ビューはシフトがある場所のみ表示（ALWAYS_SHOW_SLOTSは使わない）
 
     const locEntries = Object.values(locMap).filter(loc => loc.shifts.length > 0).sort((a,b) => a.sortKey - b.sortKey);
 
-    // 場所セクションHTML
     const locSectionsHtml = locEntries.map(loc => {
-      // 場所内でスロット×活動グループ化
       const slotActMap = { morning:{}, afternoon:{}, night:{} };
       loc.shifts.forEach(s => {
         const sk = toSlot(s.start_time);
@@ -1306,10 +1406,8 @@ function renderListView() {
         slotActMap[sk][ak].push(s);
       });
 
-      // 時間帯セクション
       const slotSectionsHtml = SLOT_DEFS.map(({key, label, hc, bg, bc}) => {
         const actGroups = slotActMap[key];
-        // 一覧ビューは実際にシフトがある活動のみ表示（常時表示枠は不要）
         const actKeys   = ACT_KEY_ORDER.filter(ak => actGroups[ak] && actGroups[ak].length > 0);
         if (!actKeys.length) return '';
 
@@ -1318,9 +1416,7 @@ function renderListView() {
           const shifts = actGroups[ak];
           const userChips = shifts.map(s => {
             const isMine   = State.user && s.user_id === State.user.id;
-            const calColor = s.calendar_color || '#4f8ef7';
             const sid      = s.id;
-            const timeStr  = s.start_time ? s.start_time.slice(0,5) : '';
             const memoChip = s.note
               ? '<span style="font-size:12px;color:#6b7280;margin-left:3px;font-style:italic;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(s.note) + '</span>'
               : '';
@@ -1330,24 +1426,20 @@ function renderListView() {
               + 'border:1.5px solid ' + (isMine ? '#93c5fd' : '#e5e7eb') + ';'
               + 'border-radius:20px;padding:3px 10px;cursor:pointer;white-space:nowrap;'
               + '-webkit-tap-highlight-color:transparent">'
-              + '<span style="font-size:15px;font-weight:' + (isMine ? '700' : '500') + ';'
-              + 'color:#111827">' + escHtml(s.user_name) + '</span>'
+              + '<span style="font-size:15px;font-weight:' + (isMine ? '700' : '500') + ';color:#111827">' + escHtml(s.user_name) + '</span>'
               + memoChip
               + '</span>';
           }).join('');
 
-          const emptyChip = shifts.length === 0
-            ? '<span style="font-size:13px;color:#9ca3af;font-style:italic;padding:3px 8px">（未登録）</span>'
-            : '';
           return '<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:5px">'
             + '<div style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;'
             + 'background:' + at.bg + ';border:1.5px solid ' + at.color + '33;'
             + 'border-radius:6px;padding:3px 8px;min-width:52px;justify-content:center">'
             + '<span style="font-size:16px">' + at.emoji + '</span>'
-            + '<span style="font-size:13px;font-weight:700;color:' + at.color + '">'
-            + at.label.replace(/^[^\s]+\s/,'') + '</span>'
+            + '<span style="font-size:13px;font-weight:700;color:#111827">'
+            + at.label.replace(/^[^s]+s/,'') + '</span>'
             + '</div>'
-            + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + userChips + emptyChip + '</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + userChips + '</div>'
             + '</div>';
         }).join('');
 
@@ -1361,33 +1453,45 @@ function renderListView() {
           + '</div>';
       }).filter(Boolean).join('');
 
+      // 場所ごとメモバナー
+      const calObj = State.calendars.find(c => c.id === loc.calendarId);
+      const noteBanner = calObj ? listNoteBannerHtml(date, calObj.id) : '';
+
       return '<div style="margin-bottom:6px;border:1.5px solid ' + loc.color + '44;border-radius:10px;overflow:hidden">'
-        // 場所ヘッダー
         + '<div style="display:flex;align-items:center;gap:6px;padding:5px 12px;'
         + 'background:' + loc.color + '18;border-bottom:1px solid ' + loc.color + '44">'
         + '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
         + 'background:' + loc.color + ';flex-shrink:0"></span>'
         + '<span style="font-size:15px;font-weight:700;color:#1f2937">' + escHtml(loc.label) + '</span>'
-        + '<span style="font-size:12px;color:#9ca3af;margin-left:2px">' + loc.shifts.length + '件</span>'
         + '</div>'
-        // 時間帯セクション群
+        + (noteBanner ? '<div style="padding:4px 8px 0">' + noteBanner + '</div>' : '')
         + slotSectionsHtml
         + '</div>';
     }).join('');
 
-    html += `<div>
-      <div class="flex items-center gap-2 mb-2 sticky top-0 bg-gray-50 py-1 z-10">
-        <h3 class="text-sm font-bold ${isToday?'text-blue-600':'text-gray-700'}">${date.replace(/-/g,'/')}（${dn}）</h3>
-        ${isToday?'<span class="bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full">今日</span>':''}
-        <span class="text-xs text-gray-400">${sorted.length}件</span>
-      </div>
-      ${listNoteBannerHtml(date)}
-      ${locSectionsHtml}
-    </div>`;
-  });
+    const emptyMsg = sorted.length === 0
+      ? '<div style="color:#9ca3af;font-size:13px;padding:6px 2px">シフトなし</div>'
+      : '';
 
-  html += '</div>';
-  return html;
+    const todayAnchorId = isToday ? 'list-today-anchor' : '';
+    return '<div id="' + todayAnchorId + '" style="margin-bottom:12px;'
+      + (isToday ? 'padding:2px;border-radius:12px;border:2px solid #3b82f6;background:#f0f7ff' : '') + '">'
+      + '<div style="display:flex;align-items:center;gap:6px;padding:' + (isToday?'6px 10px 4px':'4px 2px') + ';">'
+      + '<span style="font-size:14px;font-weight:800;color:' + (isToday?'#1d4ed8':(d.getDay()===0?'#ef4444':d.getDay()===6?'#3b82f6':'#374151')) + '">'
+      + date.replace(/-/g,'/') + '（' + dn + '）</span>'
+      + (isToday ? '<span style="background:#3b82f6;color:#fff;font-size:11px;font-weight:700;padding:1px 8px;border-radius:20px">今日</span>' : '')
+      + (!isGuest ? '<button onclick="openShiftForm(\'' + date + '\')" style="margin-left:auto;font-size:12px;background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:2px 10px;cursor:pointer">＋ 登録</button>' : '')
+      + '</div>'
+      + (emptyMsg ? '<div style="padding:0 4px">' + emptyMsg + '</div>' : locSectionsHtml)
+      + '</div>';
+  }).join('');
+
+  return '<div style="background:#f9fafb;min-height:100%">'
+    + navHtml
+    + '<div class="max-w-screen-xl mx-auto p-3" id="list-view-content">'
+    + daysHtml
+    + '</div>'
+    + '</div>';
 }
 
 // ============================================================
@@ -2654,7 +2758,26 @@ function openTodayDetail() {
   }
 }
 
+
+function changeListWeek(delta, reset) {
+  if (reset) {
+    State.listWeekOffset = 0;
+  } else {
+    State.listWeekOffset = (State.listWeekOffset || 0) + delta;
+  }
+  renderContent();
+  // 当日アンカーへスクロール（offsetが0のとき）
+  if (State.listWeekOffset === 0) {
+    setTimeout(() => {
+      const anchor = document.getElementById('list-today-anchor');
+      if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  }
+}
 function setViewMode(mode) {
+  if (mode === 'list') {
+    State.listWeekOffset = 0;
+  }
   State.viewMode = mode;
   if (mode === 'quick') State.selectedDate = todayLocal();
   updateViewBtns();

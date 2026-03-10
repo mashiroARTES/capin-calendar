@@ -1,4 +1,4 @@
-// 日ごと一行掲示板APIルート
+// 日ごと一行掲示板APIルート（場所ごとに分けて管理）
 
 import { Hono } from 'hono'
 import { optionalAuthMiddleware } from '../middleware/auth'
@@ -7,12 +7,13 @@ import type { Bindings, Variables } from '../types'
 const dayNotes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 // 掲示板取得（認証不要・年月指定でまとめて取得）
+// calendar_id を含む全件返す
 dayNotes.get('/', optionalAuthMiddleware, async (c) => {
   try {
     const year  = c.req.query('year');
     const month = c.req.query('month');
 
-    let query = 'SELECT note_date, content, updated_by_name, updated_at FROM day_notes WHERE 1=1';
+    let query = 'SELECT id, note_date, calendar_id, content, updated_by_name, updated_at FROM day_notes WHERE 1=1';
     const params: unknown[] = [];
 
     if (year && month) {
@@ -27,7 +28,7 @@ dayNotes.get('/', optionalAuthMiddleware, async (c) => {
       params.push(`${year}-%`);
     }
 
-    query += ' ORDER BY note_date ASC';
+    query += ' ORDER BY note_date ASC, calendar_id ASC';
     const { results } = await c.env.DB.prepare(query).bind(...params).all();
     return c.json({ notes: results });
 
@@ -38,6 +39,8 @@ dayNotes.get('/', optionalAuthMiddleware, async (c) => {
 });
 
 // 掲示板更新（ログイン済みの誰でも可、未ログインは不可）
+// PUT /api/day-notes/:date  body: { content, calendar_id? }
+// calendar_id が null/未指定 = 全体メモ（後方互換）
 dayNotes.put('/:date', optionalAuthMiddleware, async (c) => {
   try {
     const userId   = c.get('userId');
@@ -54,7 +57,18 @@ dayNotes.put('/:date', optionalAuthMiddleware, async (c) => {
       return c.json({ error: '日付の形式が正しくありません' }, 400);
     }
 
-    const { content } = await c.req.json();
+    const body = await c.req.json();
+    const { content } = body;
+    const calendarId: number | null = body.calendar_id ? Number(body.calendar_id) : null;
+
+    // calendar_id が指定されている場合はカレンダー存在確認
+    if (calendarId !== null) {
+      const cal = await c.env.DB.prepare('SELECT id FROM calendars WHERE id = ?').bind(calendarId).first();
+      if (!cal) {
+        return c.json({ error: '指定された場所が見つかりません' }, 404);
+      }
+    }
+
     // 最大3行・各行200文字・合計600文字
     const rawLines = (content || '').split('\n');
     const text = rawLines
@@ -64,19 +78,42 @@ dayNotes.put('/:date', optionalAuthMiddleware, async (c) => {
       .trim()
       .slice(0, 600);
 
-    // UPSERT（存在すれば上書き、なければ新規作成）
-    await c.env.DB.prepare(`
-      INSERT INTO day_notes (note_date, content, updated_by_name, updated_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(note_date) DO UPDATE SET
-        content = excluded.content,
-        updated_by_name = excluded.updated_by_name,
-        updated_at = CURRENT_TIMESTAMP
-    `).bind(noteDate, text, userName || '').run();
+    // UPSERT（同じ日×calendar_id は1件のみ）
+    if (calendarId !== null) {
+      await c.env.DB.prepare(`
+        INSERT INTO day_notes (note_date, calendar_id, content, updated_by_name, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(note_date, calendar_id) DO UPDATE SET
+          content = excluded.content,
+          updated_by_name = excluded.updated_by_name,
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(noteDate, calendarId, text, userName || '').run();
+    } else {
+      // calendar_id = NULL の場合（NULL同士のUNIQUE衝突はSQLiteでは起きないため手動チェック）
+      const existing = await c.env.DB.prepare(
+        'SELECT id FROM day_notes WHERE note_date = ? AND calendar_id IS NULL'
+      ).bind(noteDate).first();
+      if (existing) {
+        await c.env.DB.prepare(`
+          UPDATE day_notes SET content = ?, updated_by_name = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE note_date = ? AND calendar_id IS NULL
+        `).bind(text, userName || '', noteDate).run();
+      } else {
+        await c.env.DB.prepare(`
+          INSERT INTO day_notes (note_date, calendar_id, content, updated_by_name, updated_at)
+          VALUES (?, NULL, ?, ?, CURRENT_TIMESTAMP)
+        `).bind(noteDate, text, userName || '').run();
+      }
+    }
 
-    const updated = await c.env.DB.prepare(
-      'SELECT note_date, content, updated_by_name, updated_at FROM day_notes WHERE note_date = ?'
-    ).bind(noteDate).first();
+    // 更新後のデータを返す
+    const updated = calendarId !== null
+      ? await c.env.DB.prepare(
+          'SELECT id, note_date, calendar_id, content, updated_by_name, updated_at FROM day_notes WHERE note_date = ? AND calendar_id = ?'
+        ).bind(noteDate, calendarId).first()
+      : await c.env.DB.prepare(
+          'SELECT id, note_date, calendar_id, content, updated_by_name, updated_at FROM day_notes WHERE note_date = ? AND calendar_id IS NULL'
+        ).bind(noteDate).first();
 
     return c.json({ message: '掲示板を更新しました', note: updated });
 
