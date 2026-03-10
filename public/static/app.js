@@ -1019,48 +1019,12 @@ function buildQuickDetail(selDate, map) {
       + 'background:' + loc.color + ';flex-shrink:0"></span>'
       + '<span style="font-size:15px;font-weight:700;color:#1f2937">' + escHtml(loc.label) + '</span>'
       + '</div>'
+      + quickMemoHtml(sd, loc.calendarId, loc.color)
       + slotRowsHtml
       + '</div>';
   }).join('');
 
-  // メモ（場所ごと）
-  const noteMap  = State.dayNotes[sd] || {};
-  const noteHtml = State.calendars.map(cal => {
-    const note   = noteMap[String(cal.id)];
-    const lines  = note && note.content ? note.content.split('\n').filter(l => l.trim()) : [];
-    const inputId = 'qv-note-cal-' + cal.id + '-' + sd;
-    if (isGuest) {
-      if (!lines.length) return '';
-      return '<div style="margin:2px 8px;padding:5px 10px;background:#fffbeb;border-radius:8px;border-left:3px solid ' + (cal.color||'#f59e0b') + '">'
-        + '<div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:2px">' + escHtml(cal.name) + '</div>'
-        + lines.map(l => '<div style="font-size:13px;color:#92400e;line-height:1.5">📌 ' + escHtml(l) + '</div>').join('')
-        + '</div>';
-    }
-    // ログイン済み：編集フォーム
-    const content = note ? note.content : '';
-    const ls = content ? content.split('\n').slice(0,3) : ['','',''];
-    while (ls.length < 3) ls.push('');
-    return '<div style="margin:2px 8px;padding:5px 10px;background:#fffbeb;border-radius:8px;border-left:3px solid ' + (cal.color||'#f59e0b') + '">'
-      + '<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">'
-      + '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:' + (cal.color||'#f59e0b') + '"></span>'
-      + '<span style="font-size:11px;font-weight:700;color:#92400e">' + escHtml(cal.name) + '</span>'
-      + (note && note.updated_by_name ? '<span style="font-size:10px;color:#d97706;margin-left:auto">' + escHtml(note.updated_by_name) + '</span>' : '')
-      + '</div>'
-      + ['1行目','2行目','3行目'].map((lbl,i) =>
-          '<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">'
-          + '<span style="font-size:10px;color:#d97706;width:28px;flex-shrink:0">' + lbl + '</span>'
-          + '<input id="' + inputId + '-' + (i+1) + '" type="text" maxlength="100" value="' + escHtml(ls[i]) + '"'
-          + ' style="flex:1;font-size:12px;border:1px solid #fde68a;border-radius:4px;padding:2px 6px;background:#fff;outline:none"'
-          + ' placeholder="' + (i===0?'メモ（100文字以内）':'任意') + '">'
-          + '</div>'
-        ).join('')
-      + '<div style="display:flex;justify-content:flex-end;margin-top:3px">'
-      + '<button onclick="saveQuickViewNote(\'' + sd + '\',' + cal.id + ',\'' + inputId + '\')"\'"'
-      + ' style="font-size:11px;background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:2px 10px;cursor:pointer;font-weight:600">'
-      + '💾 保存</button>'
-      + '</div>'
-      + '</div>';
-  }).join('');
+
 
   const emptyHtml = dayShifts.length === 0
     ? `<div style="text-align:center;color:#9ca3af;font-size:16px;padding:32px 0">この日のシフトはありません</div>`
@@ -1122,7 +1086,6 @@ function buildQuickDetail(selDate, map) {
     + addBtnTop
     + '</div>'
     + sosHtml
-    + noteHtml
     + summaryHtml
     + emptyHtml
     + addBtn
@@ -1130,8 +1093,82 @@ function buildQuickDetail(selDate, map) {
 }
 
 
+// クイックビュー：場所カード内のメモUI
+// メモあり → 内容表示 + 「編集」ボタン（クリックで入力欄展開）
+// メモなし → 「📝 メモを追加」ボタンのみ（クリックで入力欄展開）
+function quickMemoHtml(dateStr, calendarId, locColor) {
+  if (!calendarId) return '';
+  const noteMap = State.dayNotes[dateStr] || {};
+  const note    = noteMap[String(calendarId)];
+  const lines   = note && note.content ? note.content.split('\n').filter(l => l.trim()) : [];
+  const hasNote = lines.length > 0;
+  const inputId = 'qv-memo-' + calendarId + '-' + dateStr;
+  const formId  = 'qv-memo-form-' + calendarId + '-' + dateStr;
+  const color   = locColor || '#f59e0b';
+  const isGuest = State.guestMode || !State.user;
+
+  // ゲスト：メモがあれば表示のみ、なければ何も表示しない
+  if (isGuest) {
+    if (!hasNote) return '';
+    return '<div style="padding:4px 8px 0">'
+      + '<div style="padding:4px 8px 5px;background:#fffbeb;border-radius:6px;border-left:2px solid ' + color + '">'
+      + lines.map(l => '<div style="font-size:12px;color:#92400e;line-height:1.5">📌 ' + escHtml(l) + '</div>').join('')
+      + '</div>'
+      + '</div>';
+  }
+
+  // ログイン済み：メモあり（折りたたみ表示）
+  const notePreview = hasNote
+    ? '<div style="padding:3px 8px;background:#fffbeb;border-radius:6px;border-left:2px solid ' + color + ';cursor:pointer" onclick="toggleQuickMemoForm(\'' + formId + '\')">'
+      + lines.map(l => '<div style="font-size:12px;color:#92400e;line-height:1.5">📌 ' + escHtml(l) + '</div>').join('')
+      + '<div style="font-size:10px;color:#d97706;text-align:right;margin-top:1px">✏️ 編集</div>'
+      + '</div>'
+    : '';
+
+  // 「メモを追加」ボタン（メモなし時のみ表示）
+  const addBtn = !hasNote
+    ? '<button onclick="toggleQuickMemoForm(\'' + formId + '\')" style="font-size:11px;color:#d97706;background:#fffbeb;border:1px dashed #fde68a;border-radius:5px;padding:2px 10px;cursor:pointer;width:100%">📝 メモを追加</button>'
+    : '';
+
+  // 入力フォーム（デフォルト非表示・クリックで展開）
+  const content = note ? note.content : '';
+  const ls = content ? content.split('\n').slice(0,3) : ['','',''];
+  while (ls.length < 3) ls.push('');
+  const updater = note && note.updated_by_name
+    ? '<span style="font-size:10px;color:#d97706;float:right">' + escHtml(note.updated_by_name) + '</span>'
+    : '';
+  const form = '<div id="' + formId + '" style="display:none;padding:5px 6px;background:#fffbeb;border-radius:6px;border:1px solid #fde68a">'
+    + (updater ? '<div style="margin-bottom:3px">' + updater + '</div>' : '')
+    + ['1行目','2行目','3行目'].map((lbl,i) =>
+        '<div style="display:flex;align-items:center;gap:3px;margin-bottom:2px">'
+        + '<span style="font-size:10px;color:#d97706;width:26px;flex-shrink:0">' + lbl + '</span>'
+        + '<input id="' + inputId + '-' + (i+1) + '" type="text" maxlength="100" value="' + escHtml(ls[i]) + '"'
+        + ' style="flex:1;font-size:12px;border:1px solid #fde68a;border-radius:4px;padding:2px 5px;background:#fff;outline:none"'
+        + ' placeholder="' + (i===0?'メモ（100文字以内）':'任意') + '">'
+        + '</div>'
+      ).join('')
+    + '<div style="display:flex;justify-content:space-between;margin-top:4px;gap:4px">'
+    + '<button onclick="toggleQuickMemoForm(\'' + formId + '\')" style="font-size:11px;color:#6b7280;background:#f3f4f6;border:none;border-radius:5px;padding:2px 8px;cursor:pointer">閉じる</button>'
+    + '<button onclick="saveQuickViewNote(\'' + dateStr + '\',' + calendarId + ',\'' + inputId + '\',\'' + formId + '\')" style="font-size:11px;background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:2px 10px;cursor:pointer;font-weight:600">💾 保存</button>'
+    + '</div>'
+    + '</div>';
+
+  return '<div style="padding:4px 8px 4px">'
+    + notePreview
+    + addBtn
+    + form
+    + '</div>';
+}
+
+// フォームの表示/非表示切り替え
+function toggleQuickMemoForm(formId) {
+  const el = document.getElementById(formId);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
 // クイックビューのメモ保存
-async function saveQuickViewNote(dateStr, calendarId, inputId) {
+async function saveQuickViewNote(dateStr, calendarId, inputId, formId) {
   const l1 = document.getElementById(inputId + '-1');
   const l2 = document.getElementById(inputId + '-2');
   const l3 = document.getElementById(inputId + '-3');
@@ -1143,8 +1180,16 @@ async function saveQuickViewNote(dateStr, calendarId, inputId) {
   if (r.ok) {
     if (!State.dayNotes[dateStr]) State.dayNotes[dateStr] = {};
     State.dayNotes[dateStr][String(calendarId)] = r.data.note;
-    showToast('掲示板を更新しました', 'success', 2000);
-    if (State.viewMode === 'month') renderContent();
+    showToast('メモを更新しました', 'success', 2000);
+    // クイックビューの詳細パネルだけ再描画
+    if (State.viewMode === 'quick') {
+      const map = {};
+      State.shifts.forEach(s => { (map[s.shift_date] = map[s.shift_date]||[]).push(s); });
+      const detailEl = document.getElementById('quick-detail');
+      if (detailEl) detailEl.innerHTML = buildQuickDetail(dateStr, map);
+    } else if (State.viewMode === 'month') {
+      renderContent();
+    }
   } else {
     showToast(r.data.error || '保存に失敗しました', 'error');
   }
